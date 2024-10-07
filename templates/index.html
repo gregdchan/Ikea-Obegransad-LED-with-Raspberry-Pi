@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Obegransad LED Controls</title>
+    <!-- Bootstrap CSS -->
+    <link href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css" rel="stylesheet">
+</head>
+<body>
+    <div class="container">
+        <h1 class="my-4 text-center">OBEGRANSAD CONTROLS</h1>
+
+        <h2 class="my-4">Power & Brightness</h2>
+
+
+        <!-- Turn Off Display Button -->
+        <form action="/turn_off" method="POST" class="mb-3">
+            <button type="submit" class="btn btn-danger btn-block">Turn Off Display</button>
+        </form>
+
+        <form action="/turn_on" method="POST" class="mb-3">
+            <button type="submit" class="btn btn-success btn-block">Turn On Display</button>
+        </form>
+
+        <!-- Brightness Control Form -->
+        <form action="/set_brightness" method="POST" class="mb-4">
+            <div class="form-group">
+                <label for="brightness">Select Brightness:</label>
+                <select name="brightness" id="brightness" class="form-control">
+                    <option value="64">Low (64)</option>
+                    <option value="128">Medium (128)</option>
+                    <option value="192">High (192)</option>
+                    <option value="255">Max (255)</option>
+                </select>
+            </div>
+            <button type="submit" class="btn btn-primary btn-block">Set Brightness</button>
+        </form>
+
+        <!-- Scrolling Text Form -->
+        <!-- <h2>Scrolling Text</h2>
+        <form action="/scroll_text" method="POST" class="mb-3">
+            <div class="form-group">
+                <label for="text">Enter Text to Scroll:</label>
+                <input type="text" name="text" class="form-control" placeholder="Enter text to scroll" required>
+            </div>
+            <button type="submit" class="btn btn-success btn-block">Start Scrolling</button>
+        </form> -->
+
+        <!-- Adjustable scroll speed -->
+        <h2>Scrolling Text</h2>
+        <form method="POST" action="/scroll_text" class="mb-3">
+            <div class="form-group">
+            <label for="text">Text to scroll:</label>
+            <input type="text" name="text" class="form-control" required>
+            </div>
+            <div class="form-group">
+            <label for="speed">Scroll speed (in seconds):</label>
+            <input type="number" name="speed" class="form-control" step="0.01" value="0.1" required>
+            </div>
+            <button type="submit" class="btn btn-success btn-block">Start Scrolling</button>
+        </form>
+        
+        <!-- Stop Scrolling Button -->
+        <form action="/stop_scroll" method="POST" class="mb-3">
+            <button type="submit" class="btn btn-warning btn-block">Stop Scrolling</button>
+        </form>
+
+    </div>
+
+    <!-- Bootstrap JS and dependencies -->
+    <script src="https://code.jquery.com/jquery-3.5.1.slim.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@popperjs/core@2.5.4/dist/umd/popper.min.js"></script>
+    <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/js/bootstrap.min.js"></script>
+</body>
+</html>
