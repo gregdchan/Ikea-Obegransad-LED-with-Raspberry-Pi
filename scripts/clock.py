@@ -10,8 +10,8 @@ def display_time():
     hour_str = now.strftime("%H")
     minute_str = now.strftime("%M")
 
-    render_char(0, 0, hour_str[0])  # First digit of hours
-    render_char(8, 0, hour_str[1])  # Second digit of hours
+    render_char(0, 0, hour_str[0], size="large")  # First digit of hours
+    render_char(8, 0, hour_str[1], size="large")  # Second digit of hours
 
-    render_char(0, 8, minute_str[0])  # First digit of minutes
-    render_char(8, 8, minute_str[1])  # Second digit of minutes
+    render_char(0, 8, minute_str[0], size="large")  # First digit of minutes
+    render_char(8, 8, minute_str[1], size="large")  # Second digit of minutes
