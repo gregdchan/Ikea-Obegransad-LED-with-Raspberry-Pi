@@ -38,4 +38,4 @@ def display_temperature():
         positions = [(0, 0), (8, 0), (4, 8)]
         for i, char in enumerate(temp_str):
             x_pos, y_pos = positions[i] if i < 2 else positions[2]
-            render_char(x_pos, y_pos, char)
+            render_char(x_pos, y_pos, char, size="large")  # Explicitly setting size to large

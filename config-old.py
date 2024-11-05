@@ -42,6 +42,7 @@ scrolling_event.set()  # Initially allow time/weather display to run
 # Event to signal a clean shutdown
 shutdown_event = Event()
 
+# Function to set the brightness directly
 def set_brightness(brightness_value):
     inverted_brightness = 255 - brightness_value
     duty_cycle = inverted_brightness / 255 * 100  # Calculate the duty cycle
@@ -50,17 +51,17 @@ def set_brightness(brightness_value):
 
 def p_clear():
     global p_buf
-    with display_lock:
+    with display_lock:  # Ensure exclusive access to the display buffer
         p_buf = [0] * 256
 
 def p_scan():
-    with display_lock:
+    with display_lock:  # Ensure exclusive access to the GPIO pins and buffer during update
         for i in range(256):
             GPIO.output(P_DI, p_buf[i])
             GPIO.output(P_CLK, GPIO.HIGH)
             GPIO.output(P_CLK, GPIO.LOW)
     
-        GPIO.output(P_CLA, GPIO.HIGH)
+        GPIO.output(P_CLA, GPIO.HIGH)  # Latch data into the display only once, after the entire buffer is updated
         GPIO.output(P_CLA, GPIO.LOW)
 
 # LUT for OBEGRÄNSAD (pixel index lookup table for the 16x16 matrix)
@@ -83,7 +84,7 @@ lut = [
     [232, 233, 234, 235, 236, 237, 238, 239, 248, 249, 250, 251, 252, 253, 254, 255]
 ]
 
-# Font data for large 6x7 uppercase letters and digits (A-Z, 0-9)
+# Font data for System6x7 (characters A-Z, 0-9)
 System6x7 = [
     # 0-9
     0x3E, 0x7F, 0x63, 0x63, 0x7F, 0x3E,  # 0
@@ -143,7 +144,7 @@ System6x7 = [
     0x00, 0x00, 0x07, 0x07, 0x00, 0x00,   # Apostrophe (')
     0x00, 0x00, 0x00, 0x00, 0x00, 0x00,  # Padding to center the character
     0x00, 0x00, 0x00, 0x60, 0x60, 0x20,  # Comma (,)
-    ]
+]
 
 # Mapping of characters to their starting index in the System6x7 font data
 char_map = {
@@ -156,159 +157,62 @@ char_map = {
     '~': 306, ':': 312, ';': 318, "'": 324, ',': 330
 }
 
-# SmallFont4x5 font mapping, adjusted for `lut` compatibility and to fix errors.
-SmallFont4x5 = [
-    # A-Z in 4x5 grid representation
-    0x1E, 0x09, 0x09, 0x1E,  # A
-    0x1F, 0x15, 0x15, 0x0A,  # B
-    0x0E, 0x11, 0x11, 0x0A,  # C
-    0x1F, 0x11, 0x11, 0x0E,  # D
-    0x1F, 0x15, 0x15, 0x11,  # E
-    0x1F, 0x05, 0x05, 0x01,  # F
-    0x0E, 0x11, 0x15, 0x1D,  # G
-    0x1F, 0x04, 0x04, 0x1F,  # H
-    0x11, 0x1F, 0x11, 0x00,  # I
-    0x10, 0x11, 0x0F, 0x01,  # J
-    0x1F, 0x04, 0x0A, 0x11,  # K
-    0x1F, 0x10, 0x10, 0x10,  # L
-    0x1F, 0x02, 0x02, 0x1F,  # M
-    0x1F, 0x02, 0x04, 0x1F,  # N
-    0x0E, 0x11, 0x11, 0x0E,  # O
-    0x1F, 0x05, 0x05, 0x02,  # P
-    0x0E, 0x11, 0x19, 0x1E,  # Q
-    0x1F, 0x05, 0x0D, 0x12,  # R
-    0x12, 0x15, 0x15, 0x09,  # S
-    0x01, 0x1F, 0x01, 0x01,  # T
-    0x0F, 0x10, 0x10, 0x1F,  # U
-    0x07, 0x08, 0x10, 0x1F,  # V
-    0x1F, 0x08, 0x08, 0x1F,  # W
-    0x11, 0x0A, 0x04, 0x0A,  # X     
-    0x01, 0x02, 0x1C, 0x02,  # Y
-    0x19, 0x15, 0x15, 0x13,  # Z
-
-    # Numbers in 4x5 grid representation
-    0x1E, 0x11, 0x11, 0x1E,  # 0
-    0x12, 0x1F, 0x10, 0x00,  # 1
-    0x1D, 0x15, 0x15, 0x17,  # 2
-    0x15, 0x15, 0x15, 0x1F,  # 3
-    0x07, 0x04, 0x1F, 0x04,  # 4
-    0x17, 0x15, 0x15, 0x1D,  # 5
-    0x1E, 0x15, 0x15, 0x1D,  # 6
-    0x01, 0x01, 0x1F, 0x00,  # 7
-    0x1F, 0x15, 0x15, 0x1F,  # 8
-    0x17, 0x15, 0x15, 0x1E,  # 9
-
-    # Additional small symbols
-    0x00, 0x00, 0x4F, 0x4F,  # Exclamation mark (!)
-    0x02, 0x03, 0x51, 0x59,  # Question mark (?)
-    0x47, 0x27, 0x18, 0x0C,  # Percent sign (%)
-    0x24, 0x2E, 0x7F, 0x7F,  # Dollar sign ($)
-    0x14, 0x7F, 0x7F, 0x14,  # Hash (#)
-    0x3E, 0x41, 0x5D, 0x55,  # At symbol (@)
-    0x36, 0x7F, 0x49, 0x5F,  # Ampersand (&)
-    0x08, 0x1C, 0x36, 0x63,  # Less-than sign (<)
-    0x41, 0x63, 0x36, 0x1C,  # Greater-than sign (>)
-    0x00, 0x60, 0x60, 0x00,  # Period (.)
-    0x60, 0x30, 0x18, 0x0C,  # Forward slash (/)
-    0x1C, 0x3E, 0x63, 0x41,  # Open parenthesis (()
-    0x00, 0x41, 0x63, 0x3E,  # Close parenthesis ())
-    0x22, 0x14, 0x7F, 0x14,  # Asterisk (*)
-    0x04, 0x02, 0x01, 0x02,  # Caret (^)
-    0x30, 0x48, 0x48, 0x30,  # Tilde (~)
-    0x00, 0x36, 0x36, 0x00,  # Colon (:)
-    0x00, 0x56, 0x36, 0x00,  # Semicolon (;)
-    0x00, 0x00, 0x07, 0x07,  # Apostrophe (')
-    0x00, 0x00, 0x00, 0x00,  # Padding for spacing
-    0x00, 0x00, 0x00, 0x60   # Comma (,)
-]
-
-# Updated mapping for small characters based on their starting index in SmallFont4x5.
-small_char_map = {
-    'a': 0, 'b': 4, 'c': 8, 'd': 12, 'e': 16, 'f': 20, 'g': 24,
-    'h': 28, 'i': 32, 'j': 36, 'k': 40, 'l': 44, 'm': 48, 'n': 52,
-    'o': 56, 'p': 60, 'q': 64, 'r': 68, 's': 72, 't': 76, 'u': 80,
-    'v': 84, 'w': 88, 'x': 92, 'y': 96, 'z': 100,
-    '0': 104, '1': 108, '2': 112, '3': 116, '4': 120, '5': 124,
-    '6': 128, '7': 132, '8': 136, '9': 140,
-    '!': 144, '?': 148, '%': 152, '$': 156, '#': 160, '@': 164, '&': 168,
-    '<': 172, '>': 176, '.': 180, '/': 184, '(': 188, ')': 192, '*': 196,
-    '^': 200, '~': 204, ':': 208, ';': 212, "'": 216, ' ': 220, ',': 224
-}
-
+# Function to draw a pixel at a specific position using the LUT
 def p_drawPixel(x, y, color):
     if 0 <= x < COLS and 0 <= y < ROWS:
-        index = lut[y][x]
+        index = lut[y][x]  # Use the LUT to map (x, y) to the correct pixel index
         p_buf[index] = color
 
-def render_char(xs, ys, ch, size="small"):
-    if size == "large" and ch in char_map:
-        char_pos = char_map[ch]
-        for col in range(6):
-            col_data = System6x7[char_pos + col]
-            for row in range(7):
-                if col_data & (1 << row):
-                    p_drawPixel(xs + col, ys + row, 1)
-    elif size == "small" and ch.lower() in small_char_map:
-        char_pos = small_char_map[ch.lower()]
-        for col in range(4):
-            col_data = SmallFont4x5[char_pos + col]
-            for row in range(5):
-                if col_data & (1 << row):
-                    p_drawPixel(xs + col, ys + row, 1)
-    else:
-        print(f"[render_char] Character '{ch}' not found in font data.")
+# Function to render a single character without clearing the screen
+def render_char(xs, ys, ch):
+    if ch in char_map:
+        char_pos = char_map[ch]  # Get the starting index from the map
+        for col in range(6):  # Loop through each column of the character (6 columns per character)
+            col_data = System6x7[char_pos + col]  # Get the column data from the font array
+def render_char(xs, ys, ch):
+    if ch in char_map:
+        char_pos = char_map[ch]  # Get the starting index from the map
+        for col in range(6):  # Loop through each column of the character (6 columns per character)
+            col_data = System6x7[char_pos + col]  # Get the column data from the font array
+            for row in range(7):  # Loop through each row (7 rows per character)
+                if col_data & (1 << row):  # Check if the bit is set
+                    p_drawPixel(xs + col, ys + row, 1)  # Draw pixel if bit is set
 
-# config.py
-def render_word(word, x_start=0, y_start=0, large_numbers=True):
-    """
-    Renders a word with context-sensitive sizes for numbers and symbols.
-    Numbers adjust size based on surrounding text if `large_numbers` is False.
-    """
+# Function to render a word on the LED matrix
+def render_word(word, x_start=0, y_start=0):
     p_clear()  # Clear the display buffer before rendering the entire word
     x_offset = x_start
-    length = len(word)
-
-    for i, ch in enumerate(word):
-        # Determine character size based on context or `large_numbers` flag
-        if ch.isdigit():
-            # Determine size based on context if `large_numbers` is False
-            if large_numbers:
-                size = "large"
-            else:
-                # Check if previous or next character is uppercase
-                prev_is_large = i > 0 and (word[i - 1].isupper() or word[i - 1].isdigit())
-                next_is_large = i < length - 1 and (word[i + 1].isupper() or word[i + 1].isdigit())
-                size = "large" if prev_is_large or next_is_large else "small"
-        else:
-            # For letters and symbols, set size based on uppercase or lowercase
-            size = "large" if ch.isupper() else "small"
-
-        render_char(x_offset, y_start, ch, size)  # Render each character with appropriate size
-        x_offset += 8 if size == "large" else 6  # Adjust spacing for different font sizes
+    
+    for ch in word:
+        render_char(x_offset, y_start, ch.upper())  # Render each character
+        x_offset += 8  # Move 8 pixels (6 for character + 2 for space)
 
 def handle_key_input():
     global brightness_index
-    if GPIO.input(P_KEY) == GPIO.LOW:
+    if GPIO.input(P_KEY) == GPIO.LOW:  # Key pressed
         print("Key Pressed!")
-        brightness_index = (brightness_index + 1) % len(brightness_levels)
-        set_brightness(brightness_levels[brightness_index])
-        time.sleep(0.3)
+        brightness_index = (brightness_index + 1) % len(brightness_levels)  # Cycle brightness
+        set_brightness(brightness_levels[brightness_index])  # Update brightness
+        time.sleep(0.3)  # Debounce delay
         print("Brightness Level:", brightness_levels[brightness_index])
 
+# Function to control pausing and resuming the alternate display
 def pause_display():
     global display_on
     print("[pause_display] Pausing time and weather display for scrolling text.")
-    scrolling_event.clear()
-    display_on = False
+    scrolling_event.clear()  # This pauses the time and weather display
+    display_on = False  # Turn off the display
 
 def resume_display():
     global display_on
     print("[resume_display] Resuming time and weather display after scrolling text.")
-    scrolling_event.set()
-    display_on = True
+    scrolling_event.set()  # This resumes the time and weather display
+    display_on = True  # Turn on the display
 
+# Function to gracefully shut down threads and clean up resources
 def shutdown():
     print("[shutdown] Shutting down...")
-    shutdown_event.set()
-    scrolling_event.set()
-    GPIO.cleanup()
+    shutdown_event.set()  # Signal all threads to exit
+    scrolling_event.set()  # Ensure any waiting threads continue
+    GPIO.cleanup()  # Clean up GPIO resources
+    
