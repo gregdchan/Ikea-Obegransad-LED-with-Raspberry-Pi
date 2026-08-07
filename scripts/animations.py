@@ -245,14 +245,18 @@ def anim_checker(t):
 
 
 def anim_diamond(t):
-    """Pulsing diamond (Manhattan radius) centered on the panel."""
+    """Concentric diamond ripples expanding outward from the panel center."""
     p_clear()
     cx, cy = (COLS - 1) / 2.0, (ROWS - 1) / 2.0
-    r = 3.0 + 3.0 * (0.5 + 0.5 * math.sin(t * 2.2))
+    ripple_spacing = 6
+    phase = int(t * 5.0) % ripple_spacing
+    max_radius = int(cx + cy)
+    radii = range(1 + phase, max_radius + 1, ripple_spacing)
+
     for y in range(ROWS):
         for x in range(COLS):
-            d = abs(x - cx) + abs(y - cy)
-            if abs(d - r) < 0.6:
+            distance = int(abs(x - cx) + abs(y - cy))
+            if distance in radii:
                 p_drawPixel(x, y, 1)
     p_scan()
 
@@ -305,5 +309,3 @@ def run_animation_loop():
         else:
             time.sleep(0.05)
     print("[animations] Loop ended.")
-
-

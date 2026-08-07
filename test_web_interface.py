@@ -9,6 +9,7 @@ sys.modules["RPi"] = MagicMock()
 sys.modules["RPi.GPIO"] = MagicMock()
 
 import config
+import scripts.animations as animations
 import scripts.clock as clock
 import scripts.scrolling_text as scrolling_text
 import scripts.weather as weather
@@ -102,6 +103,26 @@ class WebInterfaceTest(unittest.TestCase):
             clear.assert_not_called()
             weather.display_temperature(force=True)
             clear.assert_called_once()
+
+    def test_diamond_animation_expands_as_concentric_ripples(self):
+        with (
+            patch.object(animations, "p_clear") as clear,
+            patch.object(animations, "p_drawPixel") as draw,
+            patch.object(animations, "p_scan") as scan,
+        ):
+            animations.anim_diamond(0)
+            first_frame = {(call.args[0], call.args[1]) for call in draw.call_args_list}
+
+            draw.reset_mock()
+            animations.anim_diamond(0.21)
+            second_frame = {(call.args[0], call.args[1]) for call in draw.call_args_list}
+
+        self.assertIn((7, 7), first_frame)
+        self.assertIn((7, 6), second_frame)
+        self.assertNotIn((7, 7), second_frame)
+        self.assertGreater(len(first_frame), 4)
+        self.assertEqual(clear.call_count, 2)
+        self.assertEqual(scan.call_count, 2)
 
     def test_rightward_scroll_enters_and_wraps_from_the_left(self):
         positions = []
