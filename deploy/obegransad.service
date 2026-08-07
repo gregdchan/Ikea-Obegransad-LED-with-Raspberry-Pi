@@ -5,7 +5,7 @@ Wants=network-online.target
 
 [Service]
 User=gdc
-WorkingDirectory=/home/gdc/ikea-obegransad
+WorkingDirectory=/home/gdc/Documents/ikea-obegransad
 ExecStart=/usr/bin/python3 flask_server.py
 Restart=always
 RestartSec=5
