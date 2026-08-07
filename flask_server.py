@@ -12,7 +12,7 @@ from config import (
     randomize_pixels
 )
 from scripts.scrolling_text import scroll_text as actual_scroll_text
-from scripts.animations import run_animation_loop
+from scripts.animations import ANIMATIONS, run_animation_loop
 from scripts.clock import display_time
 from config import p_scan
 from scripts.countdown import run_countdown_loop
