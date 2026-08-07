@@ -166,7 +166,7 @@ class WebInterfaceTest(unittest.TestCase):
                 ):
                     scene = weather_animations.render_weather_frame(
                         {"condition_id": condition_id, "icon": icon},
-                        t=0.73,
+                        t=2.3,
                         timestamp=full_moon,
                     )
 
@@ -179,6 +179,34 @@ class WebInterfaceTest(unittest.TestCase):
                 self.assertGreater(len(pixels), 5)
                 self.assertTrue(all(0 <= x < 16 and 0 <= y < 16 for x, y in pixels))
                 clear.assert_called_once()
+
+    def test_weather_segments_bookend_animation_with_condition_labels(self):
+        labels = {
+            "clear_day": "SUN",
+            "clear_night": "MOON",
+            "partly_cloudy_day": "PCLD",
+            "clouds": "CLDS",
+            "rain": "RAIN",
+            "thunderstorm": "THDR",
+            "snow": "SNOW",
+            "fog": "FOG",
+        }
+        for scene, label in labels.items():
+            with self.subTest(scene=scene):
+                self.assertEqual(weather_animations.weather_label_for_scene(scene), label)
+
+        snapshot = {"condition_id": 500, "icon": "10d"}
+        frames = []
+        for frame_time in (0.5, 3.0, 6.2):
+            with (
+                patch.object(weather_animations, "p_clear"),
+                patch.object(weather_animations, "p_drawPixel") as draw,
+            ):
+                weather_animations.render_weather_frame(snapshot, frame_time)
+            frames.append({(call.args[0], call.args[1]) for call in draw.call_args_list})
+
+        self.assertEqual(frames[0], frames[2])
+        self.assertNotEqual(frames[0], frames[1])
 
     def test_default_display_cycle_includes_animated_weather(self):
         self.assertEqual(

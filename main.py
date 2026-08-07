@@ -68,12 +68,12 @@ def display_time_and_weather():
             stage, duration = DEFAULT_DISPLAY_STAGES[stage_index]
             if current_time - stage_started >= duration:
                 stage_index = (stage_index + 1) % len(DEFAULT_DISPLAY_STAGES)
-                stage, _ = DEFAULT_DISPLAY_STAGES[stage_index]
+                stage, duration = DEFAULT_DISPLAY_STAGES[stage_index]
                 if stage == "weather":
                     weather_snapshot = get_weather_snapshot()
                     if weather_snapshot is None:
                         stage_index = 0
-                        stage, _ = DEFAULT_DISPLAY_STAGES[stage_index]
+                        stage, duration = DEFAULT_DISPLAY_STAGES[stage_index]
                 stage_started = current_time
                 mode_changed = True
 
@@ -89,6 +89,7 @@ def display_time_and_weather():
                     config.current_weather_scene = render_weather_frame(
                         weather_snapshot,
                         current_time - stage_started,
+                        segment_duration=duration,
                     )
 
             p_scan()

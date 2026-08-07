@@ -6,6 +6,36 @@ from config import COLS, ROWS, p_clear, p_drawPixel
 
 NEW_MOON_EPOCH = 947182440  # 2000-01-06 18:14 UTC
 SYNODIC_MONTH_SECONDS = 2551442.9
+WEATHER_LABELS = {
+    "clear_day": "SUN",
+    "clear_night": "MOON",
+    "partly_cloudy_day": "PCLD",
+    "partly_cloudy_night": "PCLD",
+    "clouds": "CLDS",
+    "rain": "RAIN",
+    "thunderstorm": "THDR",
+    "snow": "SNOW",
+    "fog": "FOG",
+}
+WEATHER_FONT_3X5 = {
+    "A": (".#.", "#.#", "###", "#.#", "#.#"),
+    "C": (".##", "#..", "#..", "#..", ".##"),
+    "D": ("##.", "#.#", "#.#", "#.#", "##."),
+    "F": ("###", "#..", "##.", "#..", "#.."),
+    "G": (".##", "#..", "#.#", "#.#", ".##"),
+    "H": ("#.#", "#.#", "###", "#.#", "#.#"),
+    "I": ("###", ".#.", ".#.", ".#.", "###"),
+    "L": ("#..", "#..", "#..", "#..", "###"),
+    "M": ("#.#", "###", "###", "#.#", "#.#"),
+    "N": ("#.#", "##.", "#.#", ".##", "#.#"),
+    "O": (".#.", "#.#", "#.#", "#.#", ".#."),
+    "P": ("##.", "#.#", "##.", "#..", "#.."),
+    "R": ("##.", "#.#", "##.", "#.#", "#.#"),
+    "S": (".##", "#..", ".#.", "..#", "##."),
+    "T": ("###", ".#.", ".#.", ".#.", ".#."),
+    "U": ("#.#", "#.#", "#.#", "#.#", "###"),
+    "W": ("#.#", "#.#", "###", "###", "#.#"),
+}
 
 
 def moon_phase(timestamp=None):
@@ -33,9 +63,25 @@ def weather_scene_for_condition(condition_id, icon=""):
     return "clouds"
 
 
+def weather_label_for_scene(scene):
+    return WEATHER_LABELS.get(scene, "WX")
+
+
 def _pixel(x, y, value=1):
     if 0 <= x < COLS and 0 <= y < ROWS:
         p_drawPixel(x, y, value)
+
+
+def _draw_compact_label(label):
+    label = label.upper()[:4]
+    label_width = len(label) * 4 - 1
+    x_origin = (COLS - label_width) // 2
+    y_origin = (ROWS - 5) // 2
+    for char_index, char in enumerate(label):
+        for row, pixels in enumerate(WEATHER_FONT_3X5[char]):
+            for column, value in enumerate(pixels):
+                if value == "#":
+                    _pixel(x_origin + char_index * 4 + column, y_origin + row)
 
 
 def _draw_sun(t, cx=7.5, cy=7.5):
@@ -122,12 +168,17 @@ def _draw_fog(t):
                 _pixel(x + offset + segment, y)
 
 
-def render_weather_frame(snapshot, t, timestamp=None):
+def render_weather_frame(snapshot, t, timestamp=None, segment_duration=7.0):
     """Render one weather frame and return the selected scene name."""
     condition_id = snapshot.get("condition_id", 0) if snapshot else 0
     icon = snapshot.get("icon", "") if snapshot else ""
     scene = weather_scene_for_condition(condition_id, icon)
     p_clear()
+
+    show_label = t < 1.7 or t >= max(1.7, segment_duration - 1.2)
+    if show_label:
+        _draw_compact_label(weather_label_for_scene(scene))
+        return scene
 
     if scene == "clear_day":
         _draw_sun(t)
