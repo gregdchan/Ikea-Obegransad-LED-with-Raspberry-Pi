@@ -124,6 +124,28 @@ class WebInterfaceTest(unittest.TestCase):
         self.assertEqual(clear.call_count, 2)
         self.assertEqual(scan.call_count, 2)
 
+    def test_new_math_scenes_draw_valid_matrix_frames(self):
+        scene_names = ("rose", "spirograph", "chladni", "lemniscate", "harmonograph")
+        page = self.client.get("/").get_data(as_text=True)
+
+        for name in scene_names:
+            with self.subTest(scene=name):
+                self.assertIn(f'data-animation="{name}"', page)
+                self.assertIn(name, animations.ANIMATIONS)
+
+                with (
+                    patch.object(animations, "p_clear") as clear,
+                    patch.object(animations, "p_drawPixel") as draw,
+                    patch.object(animations, "p_scan") as scan,
+                ):
+                    animations.ANIMATIONS[name](0.73)
+
+                pixels = {(call.args[0], call.args[1]) for call in draw.call_args_list}
+                self.assertGreater(len(pixels), 8)
+                self.assertTrue(all(0 <= x < 16 and 0 <= y < 16 for x, y in pixels))
+                clear.assert_called_once()
+                scan.assert_called_once()
+
     def test_rightward_scroll_enters_and_wraps_from_the_left(self):
         positions = []
         config.scroll_direction = 1

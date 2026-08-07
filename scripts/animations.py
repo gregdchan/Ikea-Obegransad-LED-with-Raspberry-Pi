@@ -272,6 +272,97 @@ def anim_lissajous(t):
         y = int((math.sin(b * u + math.pi / 2) * 0.5 + 0.5) * (ROWS - 1))
         p_drawPixel(x, y, 1)
     p_scan()
+
+
+def _draw_normalized_curve(points):
+    """Draw points expressed in a centered -1..1 coordinate system."""
+    p_clear()
+    cx, cy = (COLS - 1) / 2.0, (ROWS - 1) / 2.0
+    for x, y in points:
+        px = round(cx + (x * cx))
+        py = round(cy + (y * cy))
+        if 0 <= px < COLS and 0 <= py < ROWS:
+            p_drawPixel(px, py, 1)
+    p_scan()
+
+
+def anim_rose(t):
+    """Slowly rotating three-petal polar rose."""
+    rotation = t * 0.35
+    points = []
+    for i in range(96):
+        theta = math.tau * i / 96
+        radius = 0.96 * math.cos(3 * theta)
+        angle = theta + rotation
+        points.append((radius * math.cos(angle), radius * math.sin(angle)))
+    _draw_normalized_curve(points)
+
+
+def anim_spirograph(t):
+    """Rotating hypotrochoid resembling a mechanical spirograph."""
+    rotation = t * 0.22
+    sin_r, cos_r = math.sin(rotation), math.cos(rotation)
+    points = []
+    for i in range(120):
+        theta = math.tau * 2 * i / 120
+        x = (3.0 * math.cos(theta) + 2.6 * math.cos(1.5 * theta)) / 5.85
+        y = (3.0 * math.sin(theta) - 2.6 * math.sin(1.5 * theta)) / 5.85
+        points.append((x * cos_r - y * sin_r, x * sin_r + y * cos_r))
+    _draw_normalized_curve(points)
+
+
+def anim_chladni(t):
+    """Morphing nodal lines inspired by Chladni plate modes."""
+    blend = 0.5 + 0.5 * math.sin(t * 0.65)
+    p_clear()
+    for y in range(ROWS):
+        ny = ((y + 0.5) / ROWS) - 0.5
+        for x in range(COLS):
+            nx = ((x + 0.5) / COLS) - 0.5
+            mode_a = (
+                math.cos(2 * math.pi * nx) * math.cos(3 * math.pi * ny)
+                - math.cos(3 * math.pi * nx) * math.cos(2 * math.pi * ny)
+            )
+            mode_b = (
+                math.cos(3 * math.pi * nx) * math.cos(4 * math.pi * ny)
+                - math.cos(4 * math.pi * nx) * math.cos(3 * math.pi * ny)
+            )
+            if abs(((1.0 - blend) * mode_a) + (blend * mode_b)) < 0.14:
+                p_drawPixel(x, y, 1)
+    p_scan()
+
+
+def anim_lemniscate(t):
+    """A slowly rotating figure-eight curve."""
+    rotation = t * 0.3
+    sin_r, cos_r = math.sin(rotation), math.cos(rotation)
+    points = []
+    for i in range(80):
+        theta = math.tau * i / 80
+        x = 0.96 * math.cos(theta)
+        y = 0.7 * math.sin(theta) * math.cos(theta)
+        points.append((x * cos_r - y * sin_r, x * sin_r + y * cos_r))
+    _draw_normalized_curve(points)
+
+
+def anim_harmonograph(t):
+    """Damped compound sine waves curling toward the center."""
+    points = []
+    for i in range(112):
+        theta = 18.0 * i / 111
+        decay = math.exp(-0.035 * theta)
+        x = decay * (
+            math.sin(2.0 * theta + t * 0.32)
+            + 0.35 * math.sin(3.1 * theta - t * 0.17)
+        ) / 1.35
+        y = decay * (
+            math.sin(2.7 * theta)
+            + 0.35 * math.sin(1.8 * theta + t * 0.24)
+        ) / 1.35
+        points.append((x, y))
+    _draw_normalized_curve(points)
+
+
 ANIMATIONS = {
     "sparkle": anim_sparkle,
     "wave": anim_wave,
@@ -288,6 +379,11 @@ ANIMATIONS = {
     "checker": anim_checker,
     "diamond": anim_diamond,
     "lissajous": anim_lissajous,
+    "rose": anim_rose,
+    "spirograph": anim_spirograph,
+    "chladni": anim_chladni,
+    "lemniscate": anim_lemniscate,
+    "harmonograph": anim_harmonograph,
 }
 
 
