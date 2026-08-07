@@ -6,7 +6,7 @@ from config import (
     handle_key_input, scrolling_event,
     shutdown_event, shutdown,
     current_scrolling_text,  # Not strictly needed here, but available if desired
-    countdown_event
+    countdown_event, animation_event
 )
 from scripts.clock import display_time
 from scripts.weather import display_temperature, get_weather
@@ -38,8 +38,8 @@ def display_time_and_weather():
         intro_greeting()
 
         while not shutdown_event.is_set():
-            # If scrolling or countdown is active, yield to those renderers
-            if scrolling_event.is_set() or countdown_event.is_set():
+            # Foreground modes own the panel while active.
+            if scrolling_event.is_set() or countdown_event.is_set() or animation_event.is_set():
                 # print("[time/weather] paused because scrolling_event is set.")
                 time.sleep(0.1)
                 continue

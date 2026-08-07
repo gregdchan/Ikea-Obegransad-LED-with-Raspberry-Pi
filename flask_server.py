@@ -21,8 +21,88 @@ import main   # For display_time_and_weather
 app = Flask(__name__)
 
 brightness_lock = Lock()
+mode_lock = Lock()
 stop_event = Event()  # Local event if you want to stop the scroll_worker manually
 DEFAULT_BRIGHTNESS_INDEX = 1
+
+
+def device_state():
+    """Return one consistent snapshot for the UI and command responses."""
+    brightness = brightness_levels[config.brightness_index]
+    scrolling = scrolling_event.is_set() and bool(config.current_scrolling_text)
+    animation = (
+        config.current_animation
+        if config.animation_event.is_set() and config.current_animation
+        else None
+    )
+    countdown_remaining = None
+    if config.countdown_event.is_set():
+        countdown_remaining = max(
+            0,
+            int(round(config.countdown_target_epoch - time.time())),
+        )
+
+    if countdown_remaining is not None:
+        mode = "countdown"
+    elif animation:
+        mode = "animation"
+    elif scrolling:
+        mode = "message"
+    else:
+        mode = "clock"
+
+    return {
+        "powered": brightness > 0,
+        "brightness": brightness,
+        "brightness_levels": brightness_levels,
+        "mode": mode,
+        "scrolling": scrolling,
+        "last_message": config.current_scrolling_text or None,
+        "scroll_speed": config.current_scrolling_speed,
+        "animation": animation,
+        "animation_speed": config.current_animation_speed,
+        "countdown_remaining": countdown_remaining,
+        "settings": {
+            "scroll_direction": config.scroll_direction,
+            "transitions_enabled": config.transitions_enabled,
+            "weather_city": config.weather_city,
+            "weather_api_key_configured": bool(config.weather_api_key),
+        },
+    }
+
+
+def command_response(message):
+    """Use JSON for the app, while preserving ordinary form fallbacks."""
+    wants_json = (
+        request.headers.get("X-Requested-With") == "fetch"
+        or request.accept_mimetypes.best == "application/json"
+    )
+    if wants_json:
+        return jsonify({"ok": True, "message": message, "state": device_state()})
+    return redirect(url_for("index"))
+
+
+def stop_active_modes():
+    """Stop all foreground renderers before starting another one."""
+    config.current_scrolling_text = ""
+    scrolling_event.clear()
+    config.animation_event.clear()
+    config.current_animation = None
+    config.countdown_event.clear()
+    config.countdown_target_epoch = 0.0
+
+
+def transition_back_to_clock():
+    try:
+        if config.transitions_enabled:
+            randomize_pixels(frames=6, frame_delay=0.04, fill_ratio=0.5)
+    except Exception:
+        pass
+    try:
+        display_time()
+        p_scan()
+    except Exception:
+        pass
 
 ##########################################################
 # Routes
@@ -35,13 +115,7 @@ def index():
     """
     return render_template(
         "index.html",
-        current_brightness=brightness_levels[config.brightness_index],
-        settings={
-            "scroll_direction": config.scroll_direction,
-            "transitions_enabled": config.transitions_enabled,
-            "weather_city": getattr(config, 'weather_city', ''),
-            "weather_api_key": getattr(config, 'weather_api_key', ''),
-        }
+        initial_state=device_state(),
     )
 
 @app.route("/turn_on", methods=["POST"])
@@ -49,14 +123,14 @@ def turn_on():
     with brightness_lock:
         config.brightness_index = DEFAULT_BRIGHTNESS_INDEX
         set_brightness(brightness_levels[config.brightness_index])
-    return redirect("/")
+    return command_response("Display turned on")
 
 @app.route("/turn_off", methods=["POST"])
 def turn_off():
     with brightness_lock:
         config.brightness_index = 0
         set_brightness(brightness_levels[config.brightness_index])
-    return redirect("/")
+    return command_response("Display turned off")
 
 @app.route("/set_brightness", methods=["POST"])
 def set_brightness_from_web():
@@ -69,7 +143,7 @@ def set_brightness_from_web():
         with brightness_lock:
             config.brightness_index = brightness_levels.index(val)
             set_brightness(val)
-        return redirect("/")
+        return command_response("Brightness updated")
     else:
         return jsonify({"error": "Invalid brightness level"}), 400
 
@@ -96,31 +170,18 @@ def scroll_text_route():
         print("[scroll_text_route] ERROR: Invalid speed")
         return jsonify({"error": "Invalid speed"}), 400
 
-    # If an animation is running, transition then stop it
-    try:
-        if getattr(config, 'animation_event', None) and config.animation_event.is_set():
-            # First stop animation to prevent it from repainting during transition
-            config.animation_event.clear()
-            config.current_animation = None
-            if getattr(config, 'transitions_enabled', True):
-                randomize_pixels(frames=6, frame_delay=0.04, fill_ratio=0.5)
-    except Exception:
-        pass
+    if not 0.02 <= new_speed <= 1.0:
+        return jsonify({"error": "Speed must be between 0.02 and 1 second"}), 400
 
-    # Force stop old scroll by clearing old text & event
-    config.current_scrolling_text = ""
-    scrolling_event.clear()
-    time.sleep(0.05)  # tiny delay to ensure old loop sees the mismatch
-
-    # Now set new text & speed
-    config.current_scrolling_text = text
-    config.current_scrolling_speed = new_speed
-
-    # Raise event => new scroll
-    scrolling_event.set()
+    with mode_lock:
+        stop_active_modes()
+        time.sleep(0.05)  # let the previous renderer observe its cleared event
+        config.current_scrolling_text = text
+        config.current_scrolling_speed = new_speed
+        scrolling_event.set()
     print(f"[scroll_text_route] Updated text='{text}', speed={new_speed}. Triggering scroll.")
 
-    return redirect(url_for("index"))
+    return command_response("Message started")
 
 @app.route("/stop_scroll", methods=["POST"])
 def stop_scroll():
@@ -128,117 +189,66 @@ def stop_scroll():
     Stop scrolling => revert to clock by clearing text & event
     """
     print("[stop_scroll] Called. Transitioning out, then clearing text & event.")
-    config.current_scrolling_text = ""
-    scrolling_event.clear()
-    # Brief randomization effect after stopping scroll to avoid race with scroll loop
-    try:
-        if getattr(config, 'transitions_enabled', True):
-            randomize_pixels(frames=6, frame_delay=0.04, fill_ratio=0.5)
-    except Exception as _:
-        pass
-    # Render a time frame to immediately resume visuals
-    try:
-        display_time(); p_scan()
-    except Exception:
-        pass
-    return redirect(url_for("index"))
+    with mode_lock:
+        config.current_scrolling_text = ""
+        scrolling_event.clear()
+        transition_back_to_clock()
+    return command_response("Message stopped")
 
 @app.route("/set_animation", methods=["POST"])
 def set_animation():
     name = request.form.get("name", "").strip()
     speed_str = request.form.get("speed", "0.08").strip()
     try:
-        config.current_animation_speed = max(0.01, float(speed_str))
-    except Exception:
-        pass
-    # Stop scrolling text, set animation
-    config.current_scrolling_text = ""
-    scrolling_event.clear()
-    if name:
+        speed = float(speed_str)
+    except (TypeError, ValueError):
+        return jsonify({"error": "Invalid animation speed"}), 400
+    if name not in ANIMATIONS:
+        return jsonify({"error": "Unknown animation"}), 400
+
+    with mode_lock:
+        stop_active_modes()
+        config.current_animation_speed = min(1.0, max(0.01, speed))
         config.current_animation = name
         config.animation_event.set()
-    return redirect(url_for("index"))
+    return command_response(f"{name.replace('_', ' ').title()} animation started")
 
 @app.route("/stop_animation", methods=["POST"])
 def stop_animation():
-    config.animation_event.clear()
-    config.current_animation = None
-    # Brief playful transition after animation is fully stopped
-    try:
-        if getattr(config, 'transitions_enabled', True):
-            randomize_pixels(frames=6, frame_delay=0.04, fill_ratio=0.5)
-    except Exception as _:
-        pass
-    try:
-        display_time(); p_scan()
-    except Exception:
-        pass
-    return redirect(url_for("index"))
+    with mode_lock:
+        config.animation_event.clear()
+        config.current_animation = None
+        transition_back_to_clock()
+    return command_response("Animation stopped")
 
 @app.route("/start_countdown", methods=["POST"])
 def start_countdown():
     try:
         minutes = int(request.form.get("minutes", "0").strip() or 0)
         seconds = int(request.form.get("seconds", "0").strip() or 0)
-        total = max(0, minutes * 60 + seconds)
+        total = minutes * 60 + seconds
     except Exception:
         return jsonify({"error": "Invalid minutes/seconds"}), 400
+    if total <= 0 or seconds < 0 or seconds > 59 or minutes < 0:
+        return jsonify({"error": "Set a countdown longer than zero"}), 400
 
-    # Stop other modes (ensure animations stop first, then transition)
-    try:
-        if getattr(config, 'animation_event', None) and config.animation_event.is_set():
-            config.animation_event.clear()
-            config.current_animation = None
-            if getattr(config, 'transitions_enabled', True):
-                randomize_pixels(frames=6, frame_delay=0.04, fill_ratio=0.5)
-    except Exception:
-        pass
-
-    config.current_scrolling_text = ""
-    scrolling_event.clear()
-
-    # Start countdown
-    config.countdown_target_epoch = time.time() + total
-    config.countdown_event.set()
-    return redirect(url_for("index"))
+    with mode_lock:
+        stop_active_modes()
+        config.countdown_target_epoch = time.time() + total
+        config.countdown_event.set()
+    return command_response("Countdown started")
 
 @app.route("/stop_countdown", methods=["POST"])
 def stop_countdown():
-    # Stop then transition
-    config.countdown_event.clear()
-    config.countdown_target_epoch = 0.0
-    try:
-        if getattr(config, 'transitions_enabled', True):
-            randomize_pixels(frames=6, frame_delay=0.04, fill_ratio=0.5)
-    except Exception:
-        pass
-    try:
-        display_time(); p_scan()
-    except Exception:
-        pass
-    return redirect(url_for("index"))
+    with mode_lock:
+        config.countdown_event.clear()
+        config.countdown_target_epoch = 0.0
+        transition_back_to_clock()
+    return command_response("Countdown stopped")
 
 @app.route("/status", methods=["GET"])
 def status():
-    """
-    For the front-end to see if we're scrolling:
-    It's scrolling if event is set AND there's text.
-    """
-    scrolling = scrolling_event.is_set() and bool(config.current_scrolling_text)
-    # Compute countdown remaining if active
-    remaining = None
-    if config.countdown_event.is_set():
-        try:
-            remaining = max(0, int(round(config.countdown_target_epoch - time.time())))
-        except Exception:
-            remaining = None
-    return jsonify({
-        "scrolling": scrolling,
-        "queue_length": 0,
-        "last_message": config.current_scrolling_text or None,
-        "animation": config.current_animation,
-        "countdown_remaining": remaining
-    })
+    return jsonify(device_state())
 
 @app.route("/update_settings", methods=["POST"])
 def update_settings():
@@ -260,7 +270,7 @@ def update_settings():
 
         if settings_payload:
             config.update_settings(**settings_payload)
-        return redirect(url_for("index"))
+        return command_response("Settings saved")
     except Exception as e:
         return jsonify({"error": str(e)}), 400
 
