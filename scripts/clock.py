@@ -8,7 +8,7 @@ _last_time = ""
 _clock_cache = None
 
 # Function to display the current time in HH:MM format
-def display_time():
+def display_time(force=False):
     global _last_time
     now = datetime.now()
     hour_str = now.strftime("%H")
@@ -16,7 +16,7 @@ def display_time():
     current_time = hour_str + minute_str
     
     # Only clear and redraw if time has changed
-    if current_time != _last_time:
+    if force or current_time != _last_time:
         p_clear()
         # Center large digits horizontally: 2 digits per row, each advances 7px = 14px total
         # Horizontal center offset = (16 - 14) // 2 = 1

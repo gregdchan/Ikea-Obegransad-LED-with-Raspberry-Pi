@@ -29,6 +29,15 @@ DEFAULT_BRIGHTNESS_INDEX = 1
 def device_state():
     """Return one consistent snapshot for the UI and command responses."""
     brightness = brightness_levels[config.brightness_index]
+    # p_buf_prev is the last frame latched to the hardware. Convert its physical
+    # wiring order back to row-major screen order for the browser preview.
+    with config.display_lock:
+        latched_buffer = config.p_buf_prev[:]
+    framebuffer = [
+        int(bool(latched_buffer[config.lut[y][x]]))
+        for y in range(config.ROWS)
+        for x in range(config.COLS)
+    ]
     scrolling = scrolling_event.is_set() and bool(config.current_scrolling_text)
     animation = (
         config.current_animation
@@ -55,6 +64,7 @@ def device_state():
         "powered": brightness > 0,
         "brightness": brightness,
         "brightness_levels": brightness_levels,
+        "framebuffer": framebuffer,
         "mode": mode,
         "scrolling": scrolling,
         "last_message": config.current_scrolling_text or None,
@@ -99,7 +109,7 @@ def transition_back_to_clock():
     except Exception:
         pass
     try:
-        display_time()
+        display_time(force=True)
         p_scan()
     except Exception:
         pass
@@ -245,6 +255,14 @@ def stop_countdown():
         config.countdown_target_epoch = 0.0
         transition_back_to_clock()
     return command_response("Countdown stopped")
+
+
+@app.route("/show_clock", methods=["POST"])
+def show_clock():
+    with mode_lock:
+        stop_active_modes()
+        transition_back_to_clock()
+    return command_response("Clock restored")
 
 @app.route("/status", methods=["GET"])
 def status():

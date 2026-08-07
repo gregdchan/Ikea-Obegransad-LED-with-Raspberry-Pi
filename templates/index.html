@@ -61,6 +61,8 @@
 
     * { box-sizing: border-box; }
 
+    [hidden] { display: none !important; }
+
     html { min-width: 20rem; background: var(--canvas); }
 
     body {
@@ -644,10 +646,10 @@
             <div class="matrix" id="matrix"></div>
           </div>
           <div class="matrix-copy">
-            <span class="eyebrow">Live mode</span>
+            <span class="eyebrow">Live display</span>
             <h1 class="mode-title" id="modeTitle">Clock</h1>
             <p class="mode-detail" id="modeDetail">Time and weather</p>
-            <button class="text-button" id="stopModeButton" type="button" hidden>Stop mode</button>
+            <button class="text-button" id="showClockButton" type="button" hidden>Show clock</button>
           </div>
         </div>
 
@@ -799,7 +801,30 @@
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
   <script>
+    {% if initial_state is defined %}
     const INITIAL_STATE = {{ initial_state | tojson }};
+    {% else %}
+    {% set boot_brightness = current_brightness | default(0) %}
+    const INITIAL_STATE = {
+      powered: {{ (boot_brightness != 0) | tojson }},
+      brightness: {{ boot_brightness | tojson }},
+      brightness_levels: [0, 64, 128, 192, 255],
+      framebuffer: Array(256).fill(0),
+      mode: "clock",
+      scrolling: false,
+      last_message: null,
+      scroll_speed: 0.15,
+      animation: null,
+      animation_speed: 0.08,
+      countdown_remaining: null,
+      settings: {
+        scroll_direction: {{ settings.scroll_direction | default(-1) | tojson }},
+        transitions_enabled: {{ settings.transitions_enabled | default(true) | tojson }},
+        weather_city: {{ settings.weather_city | default("") | tojson }},
+        weather_api_key_configured: false
+      }
+    };
+    {% endif %}
     const state = { ...INITIAL_STATE };
     const levels = INITIAL_STATE.brightness_levels;
     const matrix = document.getElementById("matrix");
@@ -810,66 +835,17 @@
       return pixel;
     });
 
-    const digitMap = {
-      "0": ["111", "101", "101", "101", "111"],
-      "1": ["010", "110", "010", "010", "111"],
-      "2": ["111", "001", "111", "100", "111"],
-      "3": ["111", "001", "111", "001", "111"],
-      "4": ["101", "101", "111", "001", "001"],
-      "5": ["111", "100", "111", "001", "111"],
-      "6": ["111", "100", "111", "101", "111"],
-      "7": ["111", "001", "001", "010", "010"],
-      "8": ["111", "101", "111", "101", "111"],
-      "9": ["111", "101", "111", "001", "111"]
-    };
-
     let toastTimer;
     let commandPending = false;
-    let matrixTick = 0;
-
-    function setPixel(buffer, x, y) {
-      if (x >= 0 && x < 16 && y >= 0 && y < 16) buffer[(y * 16) + x] = true;
-    }
-
-    function drawDigit(buffer, value, x, y) {
-      const glyph = digitMap[value];
-      glyph.forEach((row, rowIndex) => {
-        [...row].forEach((bit, columnIndex) => {
-          if (bit === "1") setPixel(buffer, x + columnIndex, y + rowIndex);
-        });
-      });
-    }
-
-    function drawPair(buffer, value, y) {
-      const pair = String(value).padStart(2, "0").slice(-2);
-      drawDigit(buffer, pair[0], 4, y);
-      drawDigit(buffer, pair[1], 9, y);
-    }
+    let statusPending = false;
 
     function renderMatrix() {
-      const buffer = Array(256).fill(false);
-      if (state.powered) {
-        if (state.mode === "clock") {
-          const now = new Date();
-          drawPair(buffer, now.getHours(), 2);
-          drawPair(buffer, now.getMinutes(), 9);
-        } else if (state.mode === "countdown") {
-          const remaining = Math.max(0, state.countdown_remaining || 0);
-          drawPair(buffer, Math.floor(remaining / 60), 2);
-          drawPair(buffer, remaining % 60, 9);
-        } else {
-          const seed = [...(state.animation || state.last_message || "OB")]
-            .reduce((total, char) => total + char.charCodeAt(0), 0);
-          for (let y = 0; y < 16; y += 1) {
-            for (let x = 0; x < 16; x += 1) {
-              const wave = (x + (y * 2) + matrixTick + seed) % 11;
-              if (wave < 2 || ((x * y) + seed + matrixTick) % 29 === 0) setPixel(buffer, x, y);
-            }
-          }
-        }
-      }
-      pixels.forEach((pixel, index) => pixel.classList.toggle("is-lit", buffer[index]));
-      matrixTick += 1;
+      const buffer = Array.isArray(state.framebuffer) && state.framebuffer.length === 256
+        ? state.framebuffer
+        : [];
+      pixels.forEach((pixel, index) => {
+        pixel.classList.toggle("is-lit", state.powered && Boolean(buffer[index]));
+      });
     }
 
     function formatTime(totalSeconds) {
@@ -899,9 +875,7 @@
       document.getElementById("brightnessInput").value = levels[brightnessIndex];
       document.getElementById("brightnessValue").textContent = `${Math.round((levels[brightnessIndex] / 255) * 100)}%`;
 
-      const stopButton = document.getElementById("stopModeButton");
-      stopButton.hidden = state.mode === "clock";
-      stopButton.textContent = state.mode === "countdown" ? "Stop timer" : `Stop ${state.mode}`;
+      document.getElementById("showClockButton").hidden = state.mode === "clock";
 
       document.querySelectorAll("[data-animation]").forEach((button) => {
         button.setAttribute("aria-pressed", String(state.mode === "animation" && button.dataset.animation === state.animation));
@@ -936,7 +910,7 @@
 
     function setCommandPending(pending, trigger) {
       commandPending = pending;
-      document.querySelectorAll("[data-command] button, #powerToggle, #brightnessRange, #stopModeButton").forEach((control) => {
+      document.querySelectorAll("[data-command] button, #powerToggle, #brightnessRange, #showClockButton").forEach((control) => {
         control.disabled = pending;
       });
       if (trigger && trigger.classList.contains("primary-button")) trigger.dataset.pending = String(pending);
@@ -1013,13 +987,8 @@
       });
     });
 
-    document.getElementById("stopModeButton").addEventListener("click", (event) => {
-      const stopRoutes = {
-        message: "/stop_scroll",
-        animation: "/stop_animation",
-        countdown: "/stop_countdown"
-      };
-      if (stopRoutes[state.mode]) sendCommand(stopRoutes[state.mode], new FormData(), event.currentTarget);
+    document.getElementById("showClockButton").addEventListener("click", (event) => {
+      sendCommand("/show_clock", new FormData(), event.currentTarget);
     });
 
     const tabs = [...document.querySelectorAll('[role="tab"]')];
@@ -1044,7 +1013,8 @@
     });
 
     async function fetchStatus() {
-      if (commandPending || document.hidden) return;
+      if (commandPending || statusPending || document.hidden) return;
+      statusPending = true;
       try {
         const response = await fetch("/status", { headers: { "Accept": "application/json" } });
         if (!response.ok) throw new Error();
@@ -1052,21 +1022,15 @@
         setConnection(true);
       } catch (_) {
         setConnection(false);
+      } finally {
+        statusPending = false;
       }
     }
 
     const savedTab = document.getElementById(window.sessionStorage.getItem("obegransad-active-tab"));
     if (savedTab && savedTab.getAttribute("role") === "tab") activateTab(savedTab, false);
     renderState(INITIAL_STATE);
-    window.setInterval(fetchStatus, 2000);
-    window.setInterval(() => {
-      if (state.mode === "countdown" && state.countdown_remaining > 0) state.countdown_remaining -= 1;
-    }, 1000);
-    window.setInterval(() => {
-      if (!window.matchMedia("(prefers-reduced-motion: reduce)").matches || state.mode === "clock" || state.mode === "countdown") {
-        renderMatrix();
-      }
-    }, 180);
+    window.setInterval(fetchStatus, 250);
   </script>
 </body>
 </html>

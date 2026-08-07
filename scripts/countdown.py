@@ -44,7 +44,7 @@ def run_countdown_loop():
                     pass
                 # Immediately render time to resume visuals
                 try:
-                    display_time(); p_scan()
+                    display_time(force=True); p_scan()
                 except Exception:
                     pass
                 time.sleep(0.5)
@@ -54,5 +54,4 @@ def run_countdown_loop():
         else:
             time.sleep(0.1)
     print("[countdown] Loop ended.")
-
 
