@@ -1,0 +1,14 @@
+[Unit]
+Description=IKEA Obegransad LED display (Flask server)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=gdc
+WorkingDirectory=/home/gdc/ikea-obegransad
+ExecStart=/usr/bin/python3 flask_server.py
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
