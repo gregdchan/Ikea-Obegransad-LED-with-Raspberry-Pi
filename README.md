@@ -47,3 +47,17 @@ Next, you'll need to connect the LED pins to the Raspberry pi as mapped below
 Permitting these steps are followed, you should be able to proceed with cloning package in your preferred folder. Once the package is cloned, open the scripts/weather.py file and update it with your own API and city information. Then run the flask_server.py file to initialize the app.
 
 > $ python3 flask_server.py
+
+## Auto-deploy to the Pi
+The Pi runs the server as a systemd unit (`deploy/obegransad.service`) and polls
+this repo once a minute via cron (`deploy/autopull.sh`). Push to `main` and the
+display picks up the change and restarts itself within 60 seconds.
+
+Setup on the Pi:
+
+    sudo cp deploy/obegransad.service /etc/systemd/system/
+    sudo systemctl daemon-reload && sudo systemctl enable --now obegransad
+    echo 'gdc ALL=(root) NOPASSWD: /usr/bin/systemctl restart obegransad' | sudo tee /etc/sudoers.d/obegransad
+    (crontab -l 2>/dev/null; echo '* * * * * ~/Documents/ikea-obegransad/deploy/autopull.sh >> ~/autopull.log 2>&1') | crontab -
+
+Deploy log: `tail -f ~/autopull.log`. Server status: `systemctl status obegransad`.
