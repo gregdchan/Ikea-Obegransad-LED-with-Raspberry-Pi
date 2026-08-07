@@ -38,6 +38,9 @@ def display_time_and_weather():
         intro_greeting()
 
         while not shutdown_event.is_set():
+            # Keep the physical brightness button synchronized in every mode.
+            handle_key_input()
+
             # Foreground modes own the panel while active.
             if scrolling_event.is_set() or countdown_event.is_set() or animation_event.is_set():
                 # print("[time/weather] paused because scrolling_event is set.")
@@ -65,9 +68,6 @@ def display_time_and_weather():
                 display_temperature(force=mode_changed)
             
             p_scan()
-
-            # Check for key input (e.g., brightness)
-            handle_key_input()
 
             # Adaptive sleep: longer when no changes expected
             # Clock updates every minute, weather updates every 20 min, mode switches every 15s

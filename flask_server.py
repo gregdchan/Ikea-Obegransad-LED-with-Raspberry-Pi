@@ -23,12 +23,11 @@ app = Flask(__name__)
 brightness_lock = Lock()
 mode_lock = Lock()
 stop_event = Event()  # Local event if you want to stop the scroll_worker manually
-DEFAULT_BRIGHTNESS_INDEX = 1
 
 
 def device_state():
     """Return one consistent snapshot for the UI and command responses."""
-    brightness = brightness_levels[config.brightness_index]
+    brightness = config.brightness_value
     # p_buf_prev is the last frame latched to the hardware. Convert its physical
     # wiring order back to row-major screen order for the browser preview.
     with config.display_lock:
@@ -136,15 +135,13 @@ def index():
 @app.route("/turn_on", methods=["POST"])
 def turn_on():
     with brightness_lock:
-        config.brightness_index = DEFAULT_BRIGHTNESS_INDEX
-        set_brightness(brightness_levels[config.brightness_index])
+        set_brightness(config.last_nonzero_brightness or config.DEFAULT_BRIGHTNESS)
     return command_response("Display turned on")
 
 @app.route("/turn_off", methods=["POST"])
 def turn_off():
     with brightness_lock:
-        config.brightness_index = 0
-        set_brightness(brightness_levels[config.brightness_index])
+        set_brightness(0)
     return command_response("Display turned off")
 
 @app.route("/set_brightness", methods=["POST"])
@@ -154,13 +151,12 @@ def set_brightness_from_web():
     except (ValueError, AttributeError):
         return jsonify({"error": "Invalid brightness"}), 400
 
-    if val in brightness_levels:
+    if 0 <= val <= 255:
         with brightness_lock:
-            config.brightness_index = brightness_levels.index(val)
             set_brightness(val)
         return command_response("Brightness updated")
     else:
-        return jsonify({"error": "Invalid brightness level"}), 400
+        return jsonify({"error": "Brightness must be between 0 and 255"}), 400
 
 @app.route("/scroll_text", methods=["POST"])
 def scroll_text_route():

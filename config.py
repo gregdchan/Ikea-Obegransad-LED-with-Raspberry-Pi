@@ -46,11 +46,20 @@ GPIO.setup(P_KEY, GPIO.IN, pull_up_down=GPIO.PUD_UP)
 
 # Brightness levels (0–255)
 brightness_levels = [0, 64, 128, 192, 255]
-brightness_index = 0  # Default to 0
+DEFAULT_BRIGHTNESS = 255
+brightness_value = DEFAULT_BRIGHTNESS
+brightness_index = brightness_levels.index(DEFAULT_BRIGHTNESS)
+last_nonzero_brightness = DEFAULT_BRIGHTNESS
+_last_key_state = GPIO.HIGH
+
+
+def brightness_to_duty_cycle(value):
+    """Convert logical brightness to the panel's active-low PWM duty cycle."""
+    return (255 - value) / 255.0 * 100
 
 # PWM setup for brightness control
 pwm = GPIO.PWM(P_EN, 1000)  # 1 kHz frequency
-pwm.start(brightness_levels[brightness_index] / 255.0 * 100)
+pwm.start(brightness_to_duty_cycle(brightness_value))
 
 # Shared locks & events
 display_lock = Lock()
@@ -115,15 +124,25 @@ p_buf = [0] * 256
 p_buf_prev = [0] * 256  # Previous frame for dirty tracking
 dirty_flag = False  # Flag to track if display needs update
 
-def set_brightness(brightness_value: int):
+def set_brightness(value: int):
     """
     Adjust the PWM duty cycle to change brightness.
-    :param brightness_value: Must be one of brightness_levels (0, 64, 128, 192, 255)
+    :param value: Logical brightness from 0 to 255.
     """
-    inverted_brightness = 255 - brightness_value
-    duty_cycle = inverted_brightness / 255.0 * 100
+    global brightness_value, brightness_index, last_nonzero_brightness
+    if not 0 <= value <= 255:
+        raise ValueError(f"Brightness must be between 0 and 255: {value}")
+
+    duty_cycle = brightness_to_duty_cycle(value)
     pwm.ChangeDutyCycle(duty_cycle)
-    print(f"[set_brightness] brightness={brightness_value}, duty_cycle={duty_cycle:.1f}%")
+    brightness_value = value
+    brightness_index = min(
+        range(len(brightness_levels)),
+        key=lambda index: abs(brightness_levels[index] - value),
+    )
+    if value > 0:
+        last_nonzero_brightness = value
+    print(f"[set_brightness] brightness={value}, duty_cycle={duty_cycle:.1f}%")
 
 def p_clear():
     """
@@ -315,13 +334,14 @@ def handle_key_input():
     """
     Checks P_KEY for a press, cycles brightness.
     """
-    global brightness_index
-    if GPIO.input(P_KEY) == GPIO.LOW:
+    global _last_key_state
+    key_state = GPIO.input(P_KEY)
+    if key_state == GPIO.LOW and _last_key_state == GPIO.HIGH:
         print("[handle_key_input] Key Pressed!")
-        brightness_index = (brightness_index + 1) % len(brightness_levels)
-        set_brightness(brightness_levels[brightness_index])
-        time.sleep(0.3)
+        next_index = (brightness_index + 1) % len(brightness_levels)
+        set_brightness(brightness_levels[next_index])
         print("[handle_key_input] Brightness Level:", brightness_levels[brightness_index])
+    _last_key_state = key_state
 
 def pause_display():
     """

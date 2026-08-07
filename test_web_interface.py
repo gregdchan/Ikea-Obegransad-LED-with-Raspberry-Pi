@@ -22,7 +22,9 @@ class WebInterfaceTest(unittest.TestCase):
         app.config.update(TESTING=True)
         self.client = app.test_client()
         stop_active_modes()
+        config.brightness_value = 0
         config.brightness_index = 0
+        config.last_nonzero_brightness = config.DEFAULT_BRIGHTNESS
         config.scroll_direction = -1
         config.transitions_enabled = False
         with config.display_lock:
@@ -44,6 +46,31 @@ class WebInterfaceTest(unittest.TestCase):
         self.assertEqual(status.status_code, 200)
         self.assertEqual(status.get_json()["mode"], "clock")
         self.assertEqual(len(status.get_json()["framebuffer"]), 256)
+
+    def test_active_low_brightness_mapping_and_default(self):
+        self.assertEqual(config.DEFAULT_BRIGHTNESS, 255)
+        self.assertEqual(config.brightness_to_duty_cycle(0), 100)
+        self.assertEqual(config.brightness_to_duty_cycle(255), 0)
+        config.pwm.start.assert_called_once_with(0)
+
+    def test_physical_button_updates_shared_brightness_once_per_press(self):
+        config.brightness_value = 64
+        config.brightness_index = 1
+        with (
+            patch.object(config.GPIO, "LOW", 0),
+            patch.object(config.GPIO, "HIGH", 1),
+            patch.object(config.GPIO, "input", side_effect=[0, 0, 1, 0]),
+        ):
+            config._last_key_state = 1
+            config.handle_key_input()
+            self.assertEqual(config.brightness_value, 128)
+            config.handle_key_input()
+            self.assertEqual(config.brightness_value, 128)
+            config.handle_key_input()
+            config.handle_key_input()
+            self.assertEqual(config.brightness_value, 192)
+
+        self.assertEqual(self.client.get("/status").get_json()["brightness"], 192)
 
     def test_status_maps_latched_hardware_buffer_to_screen_order(self):
         with config.display_lock:
@@ -176,8 +203,16 @@ class WebInterfaceTest(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertTrue(response.get_json()["state"]["powered"])
 
-        response = self.post("/set_brightness", {"brightness": "128"})
-        self.assertEqual(response.get_json()["state"]["brightness"], 128)
+        response = self.post("/set_brightness", {"brightness": "137"})
+        self.assertEqual(response.get_json()["state"]["brightness"], 137)
+
+        response = self.post("/turn_off")
+        self.assertFalse(response.get_json()["state"]["powered"])
+        self.assertEqual(response.get_json()["state"]["brightness"], 0)
+
+        response = self.post("/turn_on")
+        self.assertTrue(response.get_json()["state"]["powered"])
+        self.assertEqual(response.get_json()["state"]["brightness"], 137)
 
         response = self.post("/scroll_text", {"text": "Hello", "speed": "0.15"})
         self.assertEqual(response.get_json()["state"]["mode"], "message")
@@ -215,7 +250,7 @@ class WebInterfaceTest(unittest.TestCase):
         self.assertEqual(response.get_json()["state"]["pomodoro"]["phase"], "work")
 
     def test_invalid_commands_return_400(self):
-        self.assertEqual(self.post("/set_brightness", {"brightness": "12"}).status_code, 400)
+        self.assertEqual(self.post("/set_brightness", {"brightness": "256"}).status_code, 400)
         self.assertEqual(self.post("/scroll_text", {"text": "", "speed": "0.15"}).status_code, 400)
         self.assertEqual(self.post("/set_animation", {"name": "unknown"}).status_code, 400)
         self.assertEqual(self.post("/start_countdown", {"minutes": "0", "seconds": "0"}).status_code, 400)

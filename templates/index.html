@@ -671,10 +671,10 @@
           <form class="field-group" id="brightnessForm" action="/set_brightness" method="post" data-command>
             <div class="label-row">
               <label class="field-label" for="brightnessRange">Brightness</label>
-              <output class="field-value" id="brightnessValue" for="brightnessRange">25%</output>
+              <output class="field-value" id="brightnessValue" for="brightnessRange">100%</output>
             </div>
-            <input type="range" id="brightnessRange" min="0" max="4" step="1" value="1">
-            <input type="hidden" name="brightness" id="brightnessInput" value="64">
+            <input type="range" id="brightnessRange" min="0" max="255" step="1" value="255">
+            <input type="hidden" name="brightness" id="brightnessInput" value="255">
             <div class="range-scale" aria-hidden="true"><span>Off</span><span>25</span><span>50</span><span>75</span><span>100</span></div>
           </form>
         </aside>
@@ -855,7 +855,6 @@
     };
     {% endif %}
     const state = { ...INITIAL_STATE };
-    const levels = INITIAL_STATE.brightness_levels;
     const matrix = document.getElementById("matrix");
     const pixels = Array.from({ length: 256 }, () => {
       const pixel = document.createElement("span");
@@ -868,6 +867,7 @@
     let commandPending = false;
     let statusPending = false;
     let stateRevision = 0;
+    let brightnessInteracting = false;
 
     function renderMatrix() {
       const buffer = Array.isArray(state.framebuffer) && state.framebuffer.length === 256
@@ -908,11 +908,12 @@
       document.getElementById("powerToggle").checked = state.powered;
       document.getElementById("powerState").textContent = state.powered ? "On" : "Off";
 
-      const brightnessIndex = Math.max(0, levels.indexOf(state.brightness));
       const brightnessRange = document.getElementById("brightnessRange");
-      brightnessRange.value = brightnessIndex;
-      document.getElementById("brightnessInput").value = levels[brightnessIndex];
-      document.getElementById("brightnessValue").textContent = `${Math.round((levels[brightnessIndex] / 255) * 100)}%`;
+      if (!brightnessInteracting) {
+        brightnessRange.value = state.brightness;
+        document.getElementById("brightnessInput").value = state.brightness;
+        document.getElementById("brightnessValue").textContent = `${Math.round((state.brightness / 255) * 100)}%`;
+      }
 
       document.getElementById("showClockButton").hidden = state.mode === "clock";
       if (state.mode === "countdown" || state.mode === "pomodoro") setTimerPanel(state.mode);
@@ -1003,13 +1004,20 @@
 
     const brightnessRange = document.getElementById("brightnessRange");
     brightnessRange.addEventListener("input", () => {
-      const brightness = levels[Number(brightnessRange.value)];
+      brightnessInteracting = true;
+      const brightness = Number(brightnessRange.value);
       document.getElementById("brightnessInput").value = brightness;
       document.getElementById("brightnessValue").textContent = `${Math.round((brightness / 255) * 100)}%`;
     });
-    brightnessRange.addEventListener("change", () => {
+    brightnessRange.addEventListener("change", async () => {
       const body = new FormData(document.getElementById("brightnessForm"));
-      sendCommand("/set_brightness", body, brightnessRange);
+      await sendCommand("/set_brightness", body, brightnessRange);
+      brightnessInteracting = false;
+      fetchStatus();
+    });
+    brightnessRange.addEventListener("pointercancel", () => {
+      brightnessInteracting = false;
+      fetchStatus();
     });
 
     document.querySelectorAll("[data-auto-setting]").forEach((control) => {
