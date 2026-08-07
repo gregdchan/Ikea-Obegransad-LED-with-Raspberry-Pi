@@ -52,7 +52,7 @@ def device_state():
         )
 
     if countdown_remaining is not None:
-        mode = "countdown"
+        mode = "pomodoro" if config.timer_mode == "pomodoro" else "countdown"
     elif animation:
         mode = "animation"
     elif scrolling:
@@ -72,6 +72,11 @@ def device_state():
         "animation": animation,
         "animation_speed": config.current_animation_speed,
         "countdown_remaining": countdown_remaining,
+        "pomodoro": {
+            "phase": config.pomodoro_phase,
+            "session": config.pomodoro_session,
+            "sessions": config.pomodoro_sessions,
+        },
         "settings": {
             "scroll_direction": config.scroll_direction,
             "transitions_enabled": config.transitions_enabled,
@@ -100,6 +105,9 @@ def stop_active_modes():
     config.current_animation = None
     config.countdown_event.clear()
     config.countdown_target_epoch = 0.0
+    config.timer_mode = None
+    config.pomodoro_phase = None
+    config.pomodoro_session = 0
 
 
 def transition_back_to_clock():
@@ -241,15 +249,47 @@ def start_countdown():
 
     with mode_lock:
         stop_active_modes()
+        config.timer_mode = "countdown"
         config.countdown_target_epoch = time.time() + total
         config.countdown_event.set()
     return command_response("Countdown started")
+
+
+@app.route("/start_pomodoro", methods=["POST"])
+def start_pomodoro():
+    try:
+        work_minutes = int(request.form.get("work_minutes", "25").strip())
+        short_break_minutes = int(request.form.get("short_break_minutes", "5").strip())
+        long_break_minutes = int(request.form.get("long_break_minutes", "15").strip())
+        sessions = int(request.form.get("sessions", "4").strip())
+    except (AttributeError, TypeError, ValueError):
+        return jsonify({"error": "Invalid Pomodoro settings"}), 400
+
+    durations = (work_minutes, short_break_minutes, long_break_minutes)
+    if any(value < 1 or value > 99 for value in durations) or not 1 <= sessions <= 12:
+        return jsonify({"error": "Use 1-99 minutes and 1-12 focus sessions"}), 400
+
+    with mode_lock:
+        stop_active_modes()
+        config.timer_mode = "pomodoro"
+        config.pomodoro_phase = "work"
+        config.pomodoro_session = 1
+        config.pomodoro_sessions = sessions
+        config.pomodoro_work_seconds = work_minutes * 60
+        config.pomodoro_short_break_seconds = short_break_minutes * 60
+        config.pomodoro_long_break_seconds = long_break_minutes * 60
+        config.countdown_target_epoch = time.time() + config.pomodoro_work_seconds
+        config.countdown_event.set()
+    return command_response("Focus session started")
 
 @app.route("/stop_countdown", methods=["POST"])
 def stop_countdown():
     with mode_lock:
         config.countdown_event.clear()
         config.countdown_target_epoch = 0.0
+        config.timer_mode = None
+        config.pomodoro_phase = None
+        config.pomodoro_session = 0
         transition_back_to_clock()
     return command_response("Countdown stopped")
 

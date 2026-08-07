@@ -97,6 +97,13 @@ def update_settings(**kwargs):
 # Countdown timer state
 countdown_event = Event()        # Set when countdown active
 countdown_target_epoch = 0.0     # Epoch seconds when countdown ends
+timer_mode = None                # "countdown", "pomodoro", or None
+pomodoro_phase = None            # "work", "short_break", or "long_break"
+pomodoro_session = 0
+pomodoro_sessions = 4
+pomodoro_work_seconds = 25 * 60
+pomodoro_short_break_seconds = 5 * 60
+pomodoro_long_break_seconds = 15 * 60
 
 # Animation global state
 animation_event = Event()        # Set when an animation is active

@@ -4,6 +4,34 @@ from config import p_clear, p_scan, render_char, display_lock
 from scripts.clock import display_time
 
 
+def advance_pomodoro_phase(now=None):
+    """Advance to the next Pomodoro phase; return False when the cycle is done."""
+    now = time.time() if now is None else now
+    phase = config.pomodoro_phase
+    session = config.pomodoro_session
+    sessions = config.pomodoro_sessions
+
+    if phase == "work":
+        is_long_break = session >= sessions or session % 4 == 0
+        config.pomodoro_phase = "long_break" if is_long_break else "short_break"
+        duration = (
+            config.pomodoro_long_break_seconds
+            if is_long_break
+            else config.pomodoro_short_break_seconds
+        )
+    elif phase in ("short_break", "long_break"):
+        if session >= sessions:
+            return False
+        config.pomodoro_session += 1
+        config.pomodoro_phase = "work"
+        duration = config.pomodoro_work_seconds
+    else:
+        return False
+
+    config.countdown_target_epoch = now + duration
+    return True
+
+
 def _render_mm_ss(total_seconds: int):
     mins = max(0, total_seconds) // 60
     secs = max(0, total_seconds) % 60
@@ -33,10 +61,20 @@ def run_countdown_loop():
         if getattr(config, 'countdown_event', None) and config.countdown_event.is_set():
             remaining = int(round(getattr(config, 'countdown_target_epoch', 0.0) - time.time()))
             if remaining <= 0:
+                if config.timer_mode == "pomodoro" and advance_pomodoro_phase():
+                    try:
+                        if config.transitions_enabled:
+                            config.randomize_pixels(frames=4, frame_delay=0.04, fill_ratio=0.5)
+                    except Exception:
+                        pass
+                    continue
                 _render_done()
                 # Playful transition back to time/weather if enabled
                 # Clear first to prevent repaint, then transition
                 config.countdown_event.clear()
+                config.timer_mode = None
+                config.pomodoro_phase = None
+                config.pomodoro_session = 0
                 try:
                     if getattr(config, 'transitions_enabled', True):
                         config.randomize_pixels(frames=6, frame_delay=0.04, fill_ratio=0.5)
@@ -54,4 +92,3 @@ def run_countdown_loop():
         else:
             time.sleep(0.1)
     print("[countdown] Loop ended.")
-

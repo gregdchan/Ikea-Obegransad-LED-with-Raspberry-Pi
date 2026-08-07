@@ -20,7 +20,7 @@ def scroll_text(
     y_offset: int = 4
 ):
     """
-    Continuously scrolls the given 'text' across the 16x16 matrix from right to left,
+    Continuously scrolls the given text across the 16x16 matrix,
     unless changed or stopped:
       - If 'repeat=True', once text goes off-screen, x_pos resets for another pass.
       - If 'bounce=True', text reverses direction when hitting edges.
@@ -53,8 +53,21 @@ def scroll_text(
         # Center horizontally: large font advances 7 px/char (6px glyph + 1 spacing)
         glyph_width = 7 * len(trimmed) - 1
         x_center = max(0, (COLS - glyph_width) // 2)
-        # Transition into the short text for a playful effect
-        config.transition_to_text_with_randomize(trimmed, x_start=x_center, y_start=y_offset, force_small=False)
+        if config.transitions_enabled:
+            config.transition_to_text_with_randomize(
+                trimmed,
+                x_start=x_center,
+                y_start=y_offset,
+                force_small=False,
+            )
+        else:
+            render_word(
+                trimmed,
+                x_start=x_center,
+                y_start=y_offset,
+                large_numbers=True,
+                force_small=False,
+            )
         p_scan()
         # Keep displaying until text changes or scrolling is stopped
         while not shutdown_event.is_set() and scrolling_event.is_set() and config.current_scrolling_text == text:
@@ -70,9 +83,9 @@ def scroll_text(
         preview_x = max(0, (COLS - preview_width) // 2)
         config.transition_to_text_with_randomize(display_text, x_start=preview_x, y_start=y_offset, force_small=False)
 
-    # Start from the right edge, scrolling left by default
+    # Enter from the edge opposite the selected travel direction.
     direction = getattr(config, 'scroll_direction', -1)
-    x_pos = COLS
+    x_pos = COLS if direction < 0 else -text_width
 
     while not shutdown_event.is_set():
         # If scrolling_event is cleared => time/weather active => wait
@@ -96,22 +109,24 @@ def scroll_text(
         )
         p_scan()
 
-        # Move x and sleep
+        # Read direction on every frame so the setting applies immediately.
+        direction = getattr(config, 'scroll_direction', -1)
         x_pos += direction
         time.sleep(delay)
 
         # Handle bounce or normal
         if bounce:
             if x_pos <= -text_width or x_pos >= COLS:
-                direction *= -1
+                config.scroll_direction = -direction
         else:
-            # Without bounce, check if text fully left
-            if not repeat and x_pos < -text_width:
-                # Done => break
+            passed_left = direction < 0 and x_pos < -text_width
+            passed_right = direction > 0 and x_pos > COLS
+            if not repeat and (passed_left or passed_right):
                 break
-            elif repeat and x_pos < -text_width:
-                # Reset x_pos to the right edge for another pass
+            if repeat and passed_left:
                 x_pos = COLS
+            elif repeat and passed_right:
+                x_pos = -text_width
 
     print(f"[scroll_text] <<< END: text='{text}'")
 

@@ -524,6 +524,7 @@
 
     .timer-grid { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-md); }
     .timer-grid .primary-button { grid-column: 1 / -1; }
+    .timer-panel { display: grid; gap: var(--space-xl); }
 
     .quick-time-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--space-xs); }
 
@@ -734,23 +735,50 @@
       </section>
 
       <section class="view" id="timerView" role="tabpanel" aria-labelledby="timerTab" hidden>
-        <div class="view-heading"><h2>Count it down</h2></div>
+        <div class="view-heading"><h2>Time the session</h2></div>
         <div class="view-body">
-          <form class="timer-grid" id="timerForm" action="/start_countdown" method="post" data-command>
-            <label class="input-label" for="minutesInput">
-              Minutes
-              <input class="number-input" id="minutesInput" name="minutes" type="number" min="0" max="99" value="5" inputmode="numeric" required>
-            </label>
-            <label class="input-label" for="secondsInput">
-              Seconds
-              <input class="number-input" id="secondsInput" name="seconds" type="number" min="0" max="59" value="0" inputmode="numeric" required>
-            </label>
-            <button class="primary-button" type="submit">Start countdown</button>
-          </form>
-          <div class="quick-time-row" aria-label="Quick timers">
-            <button class="preset" type="button" data-timer="300">5 min</button>
-            <button class="preset" type="button" data-timer="900">15 min</button>
-            <button class="preset" type="button" data-timer="1500">25 min</button>
+          <div class="segmented" aria-label="Timer type">
+            <label class="segment"><input type="radio" name="timer_ui_mode" value="countdown" checked><span>Countdown</span></label>
+            <label class="segment"><input type="radio" name="timer_ui_mode" value="pomodoro"><span>Pomodoro</span></label>
+          </div>
+          <div class="timer-panel" id="countdownPanel">
+            <form class="timer-grid" id="timerForm" action="/start_countdown" method="post" data-command>
+              <label class="input-label" for="minutesInput">
+                Minutes
+                <input class="number-input" id="minutesInput" name="minutes" type="number" min="0" max="99" value="5" inputmode="numeric" required>
+              </label>
+              <label class="input-label" for="secondsInput">
+                Seconds
+                <input class="number-input" id="secondsInput" name="seconds" type="number" min="0" max="59" value="0" inputmode="numeric" required>
+              </label>
+              <button class="primary-button" type="submit">Start countdown</button>
+            </form>
+            <div class="quick-time-row" aria-label="Quick timers">
+              <button class="preset" type="button" data-timer="300">5 min</button>
+              <button class="preset" type="button" data-timer="900">15 min</button>
+              <button class="preset" type="button" data-timer="1500">25 min</button>
+            </div>
+          </div>
+          <div class="timer-panel" id="pomodoroPanel" hidden>
+            <form class="timer-grid" id="pomodoroForm" action="/start_pomodoro" method="post" data-command>
+              <label class="input-label" for="workMinutesInput">
+                Focus minutes
+                <input class="number-input" id="workMinutesInput" name="work_minutes" type="number" min="1" max="99" value="25" inputmode="numeric" required>
+              </label>
+              <label class="input-label" for="shortBreakInput">
+                Short break
+                <input class="number-input" id="shortBreakInput" name="short_break_minutes" type="number" min="1" max="99" value="5" inputmode="numeric" required>
+              </label>
+              <label class="input-label" for="longBreakInput">
+                Long break
+                <input class="number-input" id="longBreakInput" name="long_break_minutes" type="number" min="1" max="99" value="15" inputmode="numeric" required>
+              </label>
+              <label class="input-label" for="sessionsInput">
+                Focus sessions
+                <input class="number-input" id="sessionsInput" name="sessions" type="number" min="1" max="12" value="4" inputmode="numeric" required>
+              </label>
+              <button class="primary-button" type="submit">Start focus session</button>
+            </form>
           </div>
         </div>
       </section>
@@ -764,8 +792,8 @@
               <fieldset class="stack">
                 <legend class="field-label">Scroll direction</legend>
                 <div class="segmented">
-                  <label class="segment"><input type="radio" name="scroll_direction" value="-1"><span>Left</span></label>
-                  <label class="segment"><input type="radio" name="scroll_direction" value="1"><span>Right</span></label>
+                  <label class="segment"><input type="radio" name="scroll_direction" value="-1" data-auto-setting><span>Left</span></label>
+                  <label class="segment"><input type="radio" name="scroll_direction" value="1" data-auto-setting><span>Right</span></label>
                 </div>
               </fieldset>
               <div class="setting-row">
@@ -775,7 +803,7 @@
                 </div>
                 <label class="switch">
                   <span class="sr-only">Scene transitions</span>
-                  <input type="checkbox" id="transitionToggle" name="transitions_enabled" checked>
+                  <input type="checkbox" id="transitionToggle" name="transitions_enabled" checked data-auto-setting>
                   <span class="switch-track" aria-hidden="true"></span>
                 </label>
               </div>
@@ -791,7 +819,7 @@
                 <input class="text-input" id="weatherApiKey" name="weather_api_key" type="password" autocomplete="off" placeholder="Leave blank to keep current key">
               </label>
             </div>
-            <button class="primary-button" type="submit">Save settings</button>
+            <button class="primary-button" type="submit">Save weather</button>
           </form>
         </div>
       </section>
@@ -817,6 +845,7 @@
       animation: null,
       animation_speed: 0.08,
       countdown_remaining: null,
+      pomodoro: { phase: null, session: 0, sessions: 4 },
       settings: {
         scroll_direction: {{ settings.scroll_direction | default(-1) | tojson }},
         transitions_enabled: {{ settings.transitions_enabled | default(true) | tojson }},
@@ -838,6 +867,7 @@
     let toastTimer;
     let commandPending = false;
     let statusPending = false;
+    let stateRevision = 0;
 
     function renderMatrix() {
       const buffer = Array.isArray(state.framebuffer) && state.framebuffer.length === 256
@@ -858,6 +888,15 @@
       if (state.mode === "message") return ["Message", state.last_message || "Scrolling text"];
       if (state.mode === "animation") return [state.animation || "Scene", "Animation running"];
       if (state.mode === "countdown") return [formatTime(state.countdown_remaining), "Countdown running"];
+      if (state.mode === "pomodoro") {
+        const pomodoro = state.pomodoro || {};
+        const phaseLabels = {
+          work: `Focus ${pomodoro.session || 1} of ${pomodoro.sessions || 4}`,
+          short_break: "Short break",
+          long_break: "Long break"
+        };
+        return [formatTime(state.countdown_remaining), phaseLabels[pomodoro.phase] || "Pomodoro"];
+      }
       return ["Clock", "Time and weather"];
     }
 
@@ -876,6 +915,7 @@
       document.getElementById("brightnessValue").textContent = `${Math.round((levels[brightnessIndex] / 255) * 100)}%`;
 
       document.getElementById("showClockButton").hidden = state.mode === "clock";
+      if (state.mode === "countdown" || state.mode === "pomodoro") setTimerPanel(state.mode);
 
       document.querySelectorAll("[data-animation]").forEach((button) => {
         button.setAttribute("aria-pressed", String(state.mode === "animation" && button.dataset.animation === state.animation));
@@ -910,7 +950,7 @@
 
     function setCommandPending(pending, trigger) {
       commandPending = pending;
-      document.querySelectorAll("[data-command] button, #powerToggle, #brightnessRange, #showClockButton").forEach((control) => {
+      document.querySelectorAll("[data-command] button, [data-auto-setting], #powerToggle, #brightnessRange, #showClockButton").forEach((control) => {
         control.disabled = pending;
       });
       if (trigger && trigger.classList.contains("primary-button")) trigger.dataset.pending = String(pending);
@@ -918,6 +958,7 @@
 
     async function sendCommand(url, body, trigger) {
       if (commandPending) return false;
+      stateRevision += 1;
       setCommandPending(true, trigger);
       try {
         const response = await fetch(url, {
@@ -971,6 +1012,19 @@
       sendCommand("/set_brightness", body, brightnessRange);
     });
 
+    document.querySelectorAll("[data-auto-setting]").forEach((control) => {
+      control.addEventListener("change", async () => {
+        const body = new FormData();
+        const value = control.type === "checkbox" ? String(control.checked) : control.value;
+        body.set(control.name, value);
+        if (control.id === "transitionToggle") {
+          document.getElementById("transitionState").textContent = control.checked ? "Enabled" : "Disabled";
+        }
+        const success = await sendCommand("/update_settings", body, control);
+        if (!success) fetchStatus();
+      });
+    });
+
     document.querySelectorAll("[data-preset]").forEach((button) => {
       button.addEventListener("click", () => {
         document.getElementById("scrollTextInput").value = button.dataset.preset;
@@ -985,6 +1039,17 @@
         document.getElementById("secondsInput").value = total % 60;
         document.getElementById("timerForm").requestSubmit();
       });
+    });
+
+    function setTimerPanel(mode) {
+      document.getElementById("countdownPanel").hidden = mode !== "countdown";
+      document.getElementById("pomodoroPanel").hidden = mode !== "pomodoro";
+      const control = document.querySelector(`input[name="timer_ui_mode"][value="${mode}"]`);
+      if (control) control.checked = true;
+    }
+
+    document.querySelectorAll('input[name="timer_ui_mode"]').forEach((control) => {
+      control.addEventListener("change", () => setTimerPanel(control.value));
     });
 
     document.getElementById("showClockButton").addEventListener("click", (event) => {
@@ -1015,10 +1080,13 @@
     async function fetchStatus() {
       if (commandPending || statusPending || document.hidden) return;
       statusPending = true;
+      const requestRevision = stateRevision;
       try {
         const response = await fetch("/status", { headers: { "Accept": "application/json" } });
         if (!response.ok) throw new Error();
-        renderState(await response.json());
+        const nextState = await response.json();
+        if (requestRevision !== stateRevision) return;
+        renderState(nextState);
         setConnection(true);
       } catch (_) {
         setConnection(false);
