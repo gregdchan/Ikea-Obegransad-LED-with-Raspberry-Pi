@@ -1113,7 +1113,9 @@
     const savedTab = document.getElementById(window.sessionStorage.getItem("obegransad-active-tab"));
     if (savedTab && savedTab.getAttribute("role") === "tab") activateTab(savedTab, false);
     renderState(INITIAL_STATE);
-    window.setInterval(fetchStatus, 250);
+    // ponytail: 1s, not 250ms — 4 req/s of Flask dev server on a Pi 3 is real CPU
+    // (and current) for a preview that only changes at 10Hz.
+    window.setInterval(fetchStatus, 1000);
   </script>
 </body>
 </html>

@@ -46,7 +46,11 @@ GPIO.setup(P_KEY, GPIO.IN, pull_up_down=GPIO.PUD_UP)
 
 # Brightness levels (0–255)
 brightness_levels = [0, 64, 128, 192, 255]
-DEFAULT_BRIGHTNESS = 255
+# ponytail: 128, not 255 — all 256 LEDs at full draw browns out a Pi 3 sharing the
+# panel's supply (vcgencmd get_throttled => 0x50005). Raise it if you give the panel
+# its own 5V supply. This is the calibration knob, not a hard limit; the UI still
+# allows 0-255.
+DEFAULT_BRIGHTNESS = 128
 brightness_value = DEFAULT_BRIGHTNESS
 brightness_index = brightness_levels.index(DEFAULT_BRIGHTNESS)
 last_nonzero_brightness = DEFAULT_BRIGHTNESS

@@ -56,7 +56,7 @@ class WebInterfaceTest(unittest.TestCase):
         self.assertEqual(len(status.get_json()["framebuffer"]), 256)
 
     def test_active_low_brightness_mapping_and_default(self):
-        self.assertEqual(config.DEFAULT_BRIGHTNESS, 255)
+        self.assertEqual(config.DEFAULT_BRIGHTNESS, 128)
         self.assertEqual(config.brightness_to_duty_cycle(0), 100)
         self.assertEqual(config.brightness_to_duty_cycle(255), 0)
         config.pwm.start.assert_called_once_with(0)
