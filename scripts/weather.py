@@ -5,15 +5,27 @@ import time
 
 # Key/city are read off `config` at call time, not imported by value — otherwise
 # the .env value and the UI's update_settings() would never reach this module.
-CACHE_DURATION = 3600  # 1 hour in seconds
+CACHE_DURATION = 1200  # 20 minutes
 
 last_request_time = 0
 cached_temperature = None
+cached_weather_snapshot = None
 _last_temp_display = None  # Cache last displayed temperature to avoid redraws
 _has_drawn_once = False    # Ensure weather draws at least once after a mode switch
 
+
+def invalidate_weather_cache():
+    """Force the next weather read to fetch the configured location."""
+    global last_request_time, cached_temperature, cached_weather_snapshot
+    global _last_temp_display, _has_drawn_once
+    last_request_time = 0
+    cached_temperature = None
+    cached_weather_snapshot = None
+    _last_temp_display = None
+    _has_drawn_once = False
+
 def get_weather():
-    global last_request_time, cached_temperature
+    global last_request_time, cached_temperature, cached_weather_snapshot
 
     current_time = time.time()
     if current_time - last_request_time < CACHE_DURATION and cached_temperature is not None:
@@ -30,14 +42,28 @@ def get_weather():
         response.raise_for_status()
         data = response.json()
         cached_temperature = data['main']['temp']
+        condition = (data.get('weather') or [{}])[0]
+        cached_weather_snapshot = {
+            'temperature': cached_temperature,
+            'condition_id': int(condition.get('id', 0)),
+            'condition': condition.get('main') or 'Weather',
+            'description': condition.get('description') or condition.get('main') or 'Weather',
+            'icon': condition.get('icon') or '',
+        }
         last_request_time = current_time
         return cached_temperature
-    except requests.exceptions.RequestException as e:
+    except (requests.exceptions.RequestException, KeyError, TypeError, ValueError) as e:
         print(f"Error fetching weather data: {e}")
         # Fallback to last known temperature if available
         if cached_temperature is not None:
             return cached_temperature
         return None
+
+
+def get_weather_snapshot():
+    """Return cached temperature and condition data, fetching when stale."""
+    get_weather()
+    return dict(cached_weather_snapshot) if cached_weather_snapshot else None
 
 def display_temperature(force=False):
     global _last_temp_display, _has_drawn_once

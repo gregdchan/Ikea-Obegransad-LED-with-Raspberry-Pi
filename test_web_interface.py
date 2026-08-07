@@ -9,10 +9,12 @@ sys.modules["RPi"] = MagicMock()
 sys.modules["RPi.GPIO"] = MagicMock()
 
 import config
+import main
 import scripts.animations as animations
 import scripts.clock as clock
 import scripts.scrolling_text as scrolling_text
 import scripts.weather as weather
+import scripts.weather_animations as weather_animations
 from scripts.countdown import advance_pomodoro_phase
 from flask import render_template
 from flask_server import app, stop_active_modes
@@ -28,6 +30,11 @@ class WebInterfaceTest(unittest.TestCase):
         config.last_nonzero_brightness = config.DEFAULT_BRIGHTNESS
         config.scroll_direction = -1
         config.transitions_enabled = False
+        config.current_default_view = "clock"
+        config.current_weather_condition = None
+        config.current_weather_scene = None
+        config.default_cycle_reset_event.clear()
+        weather.invalidate_weather_cache()
         with config.display_lock:
             config.p_buf_prev = [0] * 256
         self.headers = {
@@ -104,6 +111,87 @@ class WebInterfaceTest(unittest.TestCase):
             weather.display_temperature(force=True)
             clear.assert_called_once()
             weather.render_char.assert_any_call(5, 8, "F", size="large")
+
+    def test_weather_snapshot_keeps_condition_and_day_night_icon(self):
+        response = MagicMock()
+        response.json.return_value = {
+            "main": {"temp": 71.8},
+            "weather": [{
+                "id": 801,
+                "main": "Clouds",
+                "description": "few clouds",
+                "icon": "02n",
+            }],
+        }
+        weather.last_request_time = 0
+        weather.cached_temperature = None
+        weather.cached_weather_snapshot = None
+
+        with (
+            patch.object(config, "weather_api_key", "test-key"),
+            patch.object(weather.requests, "get", return_value=response) as request,
+        ):
+            snapshot = weather.get_weather_snapshot()
+            cached_snapshot = weather.get_weather_snapshot()
+
+        self.assertEqual(snapshot, cached_snapshot)
+        self.assertEqual(snapshot["temperature"], 71.8)
+        self.assertEqual(snapshot["condition_id"], 801)
+        self.assertEqual(snapshot["description"], "few clouds")
+        self.assertEqual(snapshot["icon"], "02n")
+        request.assert_called_once()
+
+    def test_weather_conditions_render_animated_matrix_frames(self):
+        cases = (
+            (800, "01d", "clear_day"),
+            (800, "01n", "clear_night"),
+            (801, "02d", "partly_cloudy_day"),
+            (802, "03n", "partly_cloudy_night"),
+            (804, "04d", "clouds"),
+            (500, "10d", "rain"),
+            (211, "11d", "thunderstorm"),
+            (601, "13d", "snow"),
+            (741, "50d", "fog"),
+        )
+        full_moon = (
+            weather_animations.NEW_MOON_EPOCH
+            + weather_animations.SYNODIC_MONTH_SECONDS / 2
+        )
+
+        for condition_id, icon, expected_scene in cases:
+            with self.subTest(scene=expected_scene):
+                with (
+                    patch.object(weather_animations, "p_clear") as clear,
+                    patch.object(weather_animations, "p_drawPixel") as draw,
+                ):
+                    scene = weather_animations.render_weather_frame(
+                        {"condition_id": condition_id, "icon": icon},
+                        t=0.73,
+                        timestamp=full_moon,
+                    )
+
+                pixels = {
+                    (call.args[0], call.args[1])
+                    for call in draw.call_args_list
+                    if len(call.args) < 3 or call.args[2] != 0
+                }
+                self.assertEqual(scene, expected_scene)
+                self.assertGreater(len(pixels), 5)
+                self.assertTrue(all(0 <= x < 16 and 0 <= y < 16 for x, y in pixels))
+                clear.assert_called_once()
+
+    def test_default_display_cycle_includes_animated_weather(self):
+        self.assertEqual(
+            main.DEFAULT_DISPLAY_STAGES,
+            (("clock", 12.0), ("temperature", 5.0), ("weather", 7.0)),
+        )
+        config.current_default_view = "weather"
+        config.current_weather_condition = "Clear Sky"
+        config.current_weather_scene = "clear_day"
+        status = self.client.get("/status").get_json()
+        self.assertEqual(status["mode"], "weather")
+        self.assertEqual(status["weather"]["condition"], "Clear Sky")
+        self.assertEqual(status["weather"]["scene"], "clear_day")
 
     def test_diamond_animation_expands_as_concentric_ripples(self):
         with (

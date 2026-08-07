@@ -16,6 +16,7 @@ from scripts.animations import ANIMATIONS, run_animation_loop
 from scripts.clock import display_time
 from config import p_scan
 from scripts.countdown import run_countdown_loop
+import scripts.weather as weather
 import main   # For display_time_and_weather
 
 app = Flask(__name__)
@@ -57,7 +58,7 @@ def device_state():
     elif scrolling:
         mode = "message"
     else:
-        mode = "clock"
+        mode = config.current_default_view
 
     return {
         "powered": brightness > 0,
@@ -70,6 +71,10 @@ def device_state():
         "scroll_speed": config.current_scrolling_speed,
         "animation": animation,
         "animation_speed": config.current_animation_speed,
+        "weather": {
+            "condition": config.current_weather_condition,
+            "scene": config.current_weather_scene,
+        },
         "countdown_remaining": countdown_remaining,
         "pomodoro": {
             "phase": config.pomodoro_phase,
@@ -110,6 +115,8 @@ def stop_active_modes():
 
 
 def transition_back_to_clock():
+    config.current_default_view = "clock"
+    config.default_cycle_reset_event.set()
     try:
         if config.transitions_enabled:
             randomize_pixels(frames=6, frame_delay=0.04, fill_ratio=0.5)
@@ -321,6 +328,9 @@ def update_settings():
 
         if settings_payload:
             config.update_settings(**settings_payload)
+        if city or apikey:
+            weather.invalidate_weather_cache()
+            config.default_cycle_reset_event.set()
         return command_response("Settings saved")
     except Exception as e:
         return jsonify({"error": str(e)}), 400

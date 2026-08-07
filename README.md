@@ -27,7 +27,8 @@ Python, so there's no toolchain to flash and everything is editable in place.
 
 ## Features
 - **Clock** — large HH/MM digits, the default mode.
-- **Weather** — alternates with the clock every 15 s; current temperature (°F)
+- **Weather** — cycles after the clock and temperature with animated conditions
+  for clear day/night, clouds, rain, thunder, snow, and fog
   from OpenWeatherMap for a configurable city.
 - **Messages** — scrolling text in the same large font as the clock, with
   adjustable speed and direction, or static display for 1–2 character messages.
@@ -164,9 +165,9 @@ flask_server.py          web UI + API, owns the worker threads
   another (`stop_active_modes()`), so threads never fight over the buffer.
 - **Brightness is PWM** on the panel's enable pin (inverted duty cycle), which
   is why on/off is just brightness 0.
-- **Weather is cached** — API calls at most hourly, display refreshed every
-  20 minutes, last known temperature kept on network errors, `NA` shown when
-  there's no data or no API key.
+- **Weather is cached** — temperature, condition, and day/night data refresh
+  at most every 20 minutes. The last snapshot survives network errors, and
+  `NA` is shown when there is no temperature data or API key.
 
 ## Fonts
 

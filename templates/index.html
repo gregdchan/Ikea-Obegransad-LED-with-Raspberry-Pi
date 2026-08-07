@@ -889,6 +889,11 @@
     function modeCopy() {
       if (state.mode === "message") return ["Message", state.last_message || "Scrolling text"];
       if (state.mode === "animation") return [state.animation || "Scene", "Animation running"];
+      if (state.mode === "temperature") return ["Temperature", "Current conditions"];
+      if (state.mode === "weather") {
+        const weather = state.weather || {};
+        return [weather.condition || "Weather", "Current conditions"];
+      }
       if (state.mode === "countdown") return [formatTime(state.countdown_remaining), "Countdown running"];
       if (state.mode === "pomodoro") {
         const pomodoro = state.pomodoro || {};

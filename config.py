@@ -119,6 +119,12 @@ animation_event = Event()        # Set when an animation is active
 current_animation = None         # String key of the current animation
 current_animation_speed = 0.08   # Base delay between frames
 
+# Default clock/weather cycle state, surfaced by the web status endpoint.
+current_default_view = "clock"
+current_weather_condition = None
+current_weather_scene = None
+default_cycle_reset_event = Event()
+
 # Initialize the pixel buffer for the LED matrix
 p_buf = [0] * 256
 p_buf_prev = [0] * 256  # Previous frame for dirty tracking

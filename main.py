@@ -1,5 +1,6 @@
 import time
 from threading import Thread
+import config
 from config import (
     pwm, GPIO,
     p_clear, p_scan,
@@ -9,7 +10,15 @@ from config import (
     countdown_event, animation_event
 )
 from scripts.clock import display_time
-from scripts.weather import display_temperature, get_weather
+from scripts.weather import display_temperature, get_weather_snapshot
+from scripts.weather_animations import render_weather_frame
+
+
+DEFAULT_DISPLAY_STAGES = (
+    ("clock", 12.0),
+    ("temperature", 5.0),
+    ("weather", 7.0),
+)
 
 def intro_greeting():
     """
@@ -24,14 +33,15 @@ def display_time_and_weather():
     1. Optionally greet at boot.
     2. Loop until shutdown_event is set:
        - If scrolling_event is set, we pause time/weather to avoid concurrency.
-       - Refresh weather data every 20 minutes.
-       - Switch between time and weather every 15s.
+       - Refresh weather data through the shared 20-minute cache.
+       - Cycle through clock, temperature, and animated conditions.
        - Rely on final 'shutdown()' for GPIO cleanup, not here.
     """
-    weather_data = None
-    last_weather_update = time.time()
-    last_switch_time = time.time()
-    display_time_mode = True
+    stage_index = 0
+    stage_started = time.monotonic()
+    mode_changed = True
+    weather_snapshot = None
+    config.current_default_view = "clock"
 
     try:
         # Boot-time optional greeting
@@ -47,32 +57,44 @@ def display_time_and_weather():
                 time.sleep(0.1)
                 continue
 
-            # Update weather data every 20 min
-            current_time = time.time()
-            if (current_time - last_weather_update) > 1200:
-                print("[time/weather] Fetching new weather data...")
-                weather_data = get_weather()  
-                last_weather_update = current_time
-
-            # Switch between time & weather every 15s
-            mode_changed = False
-            if (current_time - last_switch_time) > 15:
-                display_time_mode = not display_time_mode
-                last_switch_time = current_time
+            current_time = time.monotonic()
+            if config.default_cycle_reset_event.is_set():
+                config.default_cycle_reset_event.clear()
+                stage_index = 0
+                stage_started = current_time
+                weather_snapshot = None
                 mode_changed = True
 
-            # Show time or weather (display functions handle their own clearing now)
-            if display_time_mode:
-                display_time(force=mode_changed)
-            else:
-                display_temperature(force=mode_changed)
-            
-            p_scan()
+            stage, duration = DEFAULT_DISPLAY_STAGES[stage_index]
+            if current_time - stage_started >= duration:
+                stage_index = (stage_index + 1) % len(DEFAULT_DISPLAY_STAGES)
+                stage, _ = DEFAULT_DISPLAY_STAGES[stage_index]
+                if stage == "weather":
+                    weather_snapshot = get_weather_snapshot()
+                    if weather_snapshot is None:
+                        stage_index = 0
+                        stage, _ = DEFAULT_DISPLAY_STAGES[stage_index]
+                stage_started = current_time
+                mode_changed = True
 
-            # Adaptive sleep: longer when no changes expected
-            # Clock updates every minute, weather updates every 20 min, mode switches every 15s
-            sleep_duration = 1.0
-            time.sleep(sleep_duration)
+            config.current_default_view = stage
+            if stage == "clock":
+                display_time(force=mode_changed)
+            elif stage == "temperature":
+                display_temperature(force=mode_changed)
+            else:
+                weather_snapshot = weather_snapshot or get_weather_snapshot()
+                if weather_snapshot:
+                    config.current_weather_condition = weather_snapshot["description"].title()
+                    config.current_weather_scene = render_weather_frame(
+                        weather_snapshot,
+                        current_time - stage_started,
+                    )
+
+            p_scan()
+            mode_changed = False
+
+            time.sleep(0.08 if stage == "weather" else 0.1)
 
     except KeyboardInterrupt:
         print("[time/weather] KeyboardInterrupt – stopping loop.")
