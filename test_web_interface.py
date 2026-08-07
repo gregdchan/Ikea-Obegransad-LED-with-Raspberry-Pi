@@ -103,6 +103,7 @@ class WebInterfaceTest(unittest.TestCase):
             clear.assert_not_called()
             weather.display_temperature(force=True)
             clear.assert_called_once()
+            weather.render_char.assert_any_call(5, 8, "F", size="large")
 
     def test_diamond_animation_expands_as_concentric_ripples(self):
         with (

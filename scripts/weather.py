@@ -62,8 +62,8 @@ def display_temperature(force=False):
                 # Two digits centered on top; 'F' centered on bottom
                 render_char(x0 + 0, 0, temp_str[0], size="large")
                 render_char(x0 + 8, 0, temp_str[1], size="large")
-                # Center single 'F': (16 - 7) // 2 = 4
-                render_char(4, 8, 'F', size="large")
+                # The glyph is six pixels wide, so x=5 centers it on the 16-column panel.
+                render_char(5, 8, 'F', size="large")
             elif len(temp_str) == 3:
                 # Top two digits centered; bottom third digit + 'F' centered as a pair
                 render_char(x0 + 0, 0, temp_str[0], size="large")
