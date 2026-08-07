@@ -52,16 +52,17 @@ def display_time_and_weather():
                 last_weather_update = current_time
 
             # Switch between time & weather every 15s
+            mode_changed = False
             if (current_time - last_switch_time) > 15:
                 display_time_mode = not display_time_mode
                 last_switch_time = current_time
-                # Do not clear here. Each renderer manages its own clear on change.
+                mode_changed = True
 
             # Show time or weather (display functions handle their own clearing now)
             if display_time_mode:
-                display_time()  # Render clock (uses internal caching)
+                display_time(force=mode_changed)
             else:
-                display_temperature()  # Render temp (uses internal caching)
+                display_temperature(force=mode_changed)
             
             p_scan()
 

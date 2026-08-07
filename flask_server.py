@@ -119,10 +119,7 @@ def transition_back_to_clock():
 ##########################################################
 @app.route("/")
 def index():
-    """
-    Renders index.html, passing 'current_brightness'
-    so the dropdown reflects the server's brightness state.
-    """
+    """Render the controls with a complete initial device snapshot."""
     return render_template(
         "index.html",
         initial_state=device_state(),

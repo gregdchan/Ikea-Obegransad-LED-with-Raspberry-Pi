@@ -39,7 +39,7 @@ def get_weather():
             return cached_temperature
         return None
 
-def display_temperature():
+def display_temperature(force=False):
     global _last_temp_display, _has_drawn_once
     temperature = get_weather()
 
@@ -49,7 +49,7 @@ def display_temperature():
         temp_str = str(temp_int)
 
         # Redraw if temp changed OR we haven't drawn any weather frame yet
-        if temp_str != _last_temp_display or not _has_drawn_once:
+        if force or temp_str != _last_temp_display or not _has_drawn_once:
             p_clear()
             # Center horizontally; large glyph advance ~7px (6 + 1 spacing)
             # Two-glyph rows center at x0 = (16 - 14) // 2 = 1
@@ -74,7 +74,7 @@ def display_temperature():
             _has_drawn_once = True
     else:
         # Show fallback once if we haven't drawn weather recently
-        if _last_temp_display != "__NA__" or not _has_drawn_once:
+        if force or _last_temp_display != "__NA__" or not _has_drawn_once:
             p_clear()
             # Render "NA" with F to indicate unavailable
             render_char(0, 0, 'N', size="large")
