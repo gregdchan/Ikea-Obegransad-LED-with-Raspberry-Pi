@@ -3,7 +3,7 @@
 ##########################################################
 from flask import Flask, render_template, request, jsonify, redirect, url_for
 from threading import Thread, Lock, Event
-import time, sys
+import time, sys, os
 
 import config
 from config import (
@@ -374,8 +374,9 @@ def scroll_worker():
     print("[scroll_worker] Exiting. stop_event or shutdown_event was set.")
 
 def run_flask_server():
-    print("[flask_server] Starting on port 5000...")
-    app.run(host="0.0.0.0", port=5000)
+    port = int(os.environ.get("PORT", 5000))
+    print(f"[flask_server] Starting on port {port}...")
+    app.run(host="0.0.0.0", port=port)
     print("[flask_server] Flask server stopped.")
 
 def shutdown():

@@ -89,7 +89,8 @@ python3 flask_server.py
 ```
 
 The panel starts in clock/weather mode and the dashboard is at
-`http://<pi-hostname>.local:5000`.
+`http://<pi-hostname>.local:5000`. Set `PORT` to change it — the systemd unit
+uses `PORT=80` so the dashboard is just `http://<pi-hostname>.local`.
 
 ## Run as a service + auto-deploy
 
