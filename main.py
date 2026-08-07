@@ -1,76 +1,98 @@
 import time
-from config import pwm, GPIO, p_clear, p_scan, handle_key_input, scrolling_event, shutdown_event, shutdown
+from threading import Thread
+from config import (
+    pwm, GPIO,
+    p_clear, p_scan,
+    handle_key_input, scrolling_event,
+    shutdown_event, shutdown,
+    current_scrolling_text,  # Not strictly needed here, but available if desired
+    countdown_event
+)
 from scripts.clock import display_time
 from scripts.weather import display_temperature, get_weather
-from threading import Thread
 
-# Ensure scrolling_event is cleared initially to start with time and weather display
-scrolling_event.clear()  # This ensures scrolling is not active by default
+def intro_greeting():
+    """
+    Optional: Show a quick greeting or blinking text at startup.
+    Could also call a scroll function if you like.
+    """
+    print("[intro_greeting] Hello from LED Matrix!")
+    time.sleep(1)  # Just a small pause for effect
 
-# Function to alternate between displaying time and weather
 def display_time_and_weather():
+    """
+    1. Optionally greet at boot.
+    2. Loop until shutdown_event is set:
+       - If scrolling_event is set, we pause time/weather to avoid concurrency.
+       - Refresh weather data every 20 minutes.
+       - Switch between time and weather every 15s.
+       - Rely on final 'shutdown()' for GPIO cleanup, not here.
+    """
     weather_data = None
     last_weather_update = time.time()
     last_switch_time = time.time()
-    display_time_mode = True  # Start by displaying time
+    display_time_mode = True
 
     try:
-        while not shutdown_event.is_set():  # Stop the loop if shutdown is triggered
-            # Only proceed if scrolling is not active
-            if not scrolling_event.is_set():
-                current_time = time.time()
+        # Boot-time optional greeting
+        intro_greeting()
 
-                # Update weather data every 20 minutes (1200 seconds)
-                if current_time - last_weather_update > 1200:
-                    print("[display_time_and_weather] Fetching new weather data...")
-                    weather_data = get_weather()
-                    last_weather_update = current_time
+        while not shutdown_event.is_set():
+            # If scrolling or countdown is active, yield to those renderers
+            if scrolling_event.is_set() or countdown_event.is_set():
+                # print("[time/weather] paused because scrolling_event is set.")
+                time.sleep(0.1)
+                continue
 
-                # Alternate between time and weather every 15 seconds
-                if current_time - last_switch_time > 15:
-                    display_time_mode = not display_time_mode  # Toggle between time and weather
-                    last_switch_time = current_time
+            # Update weather data every 20 min
+            current_time = time.time()
+            if (current_time - last_weather_update) > 1200:
+                print("[time/weather] Fetching new weather data...")
+                weather_data = get_weather()  
+                last_weather_update = current_time
 
-                if display_time_mode:
-                    print("[display_time_and_weather] Displaying time:", time.strftime("%H:%M:%S"))
-                    p_clear()  # Clear the screen before displaying the time
-                    display_time()  # Render the current time
-                    p_scan()  # Update the display with rendered content
-                else:
-                    print("[display_time_and_weather] Displaying weather.")
-                    p_clear()  # Clear the screen before displaying the weather
-                    display_temperature()  # Render the weather information
-                    p_scan()  # Update the display with rendered content
+            # Switch between time & weather every 15s
+            if (current_time - last_switch_time) > 15:
+                display_time_mode = not display_time_mode
+                last_switch_time = current_time
+                # Do not clear here. Each renderer manages its own clear on change.
 
-                # Check for key press to adjust brightness or other actions
-                handle_key_input()
-
-                time.sleep(1)
+            # Show time or weather (display functions handle their own clearing now)
+            if display_time_mode:
+                display_time()  # Render clock (uses internal caching)
             else:
-                print("[display_time_and_weather] Paused - scrolling is active.")
-                time.sleep(0.1)  # Check every 100ms if scrolling is done
+                display_temperature()  # Render temp (uses internal caching)
+            
+            p_scan()
+
+            # Check for key input (e.g., brightness)
+            handle_key_input()
+
+            # Adaptive sleep: longer when no changes expected
+            # Clock updates every minute, weather updates every 20 min, mode switches every 15s
+            sleep_duration = 1.0
+            time.sleep(sleep_duration)
 
     except KeyboardInterrupt:
-        pass
-
+        print("[time/weather] KeyboardInterrupt – stopping loop.")
     finally:
-        print("[display_time_and_weather] Cleaning up GPIO resources...")
-        pwm.stop()
-        GPIO.cleanup()
-
+        # We do NOT clean up GPIO here to avoid conflicts with the scroll thread.
+        # Let the global 'shutdown()' handle it once everything is done.
+        print("[time/weather] Exiting display_time_and_weather loop (no GPIO cleanup here).")
 
 if __name__ == "__main__":
     # Run display_time_and_weather in a separate thread
-    display_thread = Thread(target=display_time_and_weather)
+    display_thread = Thread(target=display_time_and_weather, daemon=True)
     display_thread.start()
 
     try:
-        while True:
-            time.sleep(1)  # Keep the main thread alive
-
+        # Keep the main thread alive
+        while not shutdown_event.is_set():
+            time.sleep(1)
     except KeyboardInterrupt:
-        shutdown()  # Gracefully shut down on Ctrl+C
+        print("[main] KeyboardInterrupt => calling shutdown()")
+        shutdown()
 
-    # Wait for threads to finish
+    # Wait for display_thread to finish
     display_thread.join()
     print("[main] Program terminated.")

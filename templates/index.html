@@ -1,76 +1,282 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Obegransad LED Controls</title>
-    <!-- Bootstrap CSS -->
-    <link href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css" rel="stylesheet">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>LED Matrix Dashboard</title>
+  <!-- Tailwind CSS (CDN) -->
+  <script src="https://cdn.tailwindcss.com"></script>
 </head>
-<body>
-    <div class="container">
-        <h1 class="my-4 text-center">OBEGRANSAD CONTROLS</h1>
+<body class="bg-gray-900 text-white min-h-screen flex flex-col items-center py-10 px-4">
+  <h1 class="text-3xl font-bold mb-6">🌈 LED Matrix Dashboard</h1>
 
-        <h2 class="my-4">Power & Brightness</h2>
+  <div class="w-full max-w-2xl grid grid-cols-1 md:grid-cols-2 gap-6">
+    <!-- Power Controls -->
+    <form action="/turn_on" method="post" class="bg-gray-800 p-4 rounded-xl shadow">
+      <h2 class="text-xl font-semibold mb-2">Power</h2>
+      <button class="w-full bg-green-600 hover:bg-green-700 py-2 rounded-lg font-semibold">
+        🔆 Turn On
+      </button>
+    </form>
 
+    <form action="/turn_off" method="post" class="bg-gray-800 p-4 rounded-xl shadow">
+      <h2 class="text-xl font-semibold mb-2">Power</h2>
+      <button class="w-full bg-red-600 hover:bg-red-700 py-2 rounded-lg font-semibold">
+        🌑 Turn Off
+      </button>
+    </form>
 
-        <!-- Turn Off Display Button -->
-        <form action="/turn_off" method="POST" class="mb-3">
-            <button type="submit" class="btn btn-danger btn-block">Turn Off Display</button>
-        </form>
+    <!-- Brightness -->
+    <form action="/set_brightness" method="post" class="bg-gray-800 p-4 rounded-xl shadow col-span-1 md:col-span-2">
+      <h2 class="text-xl font-semibold mb-2">Brightness</h2>
+      <div class="flex items-center gap-4">
+        <!-- Hardcoded brightness values or loop them from server -->
+        <select name="brightness" class="w-full px-3 py-2 bg-gray-700 rounded">
+          <option value="0" {% if current_brightness == 0 %}selected{% endif %}>0</option>
+          <option value="64" {% if current_brightness == 64 %}selected{% endif %}>64</option>
+          <option value="128" {% if current_brightness == 128 %}selected{% endif %}>128</option>
+          <option value="192" {% if current_brightness == 192 %}selected{% endif %}>192</option>
+          <option value="255" {% if current_brightness == 255 %}selected{% endif %}>255</option>
+        </select>
+        <button type="submit" class="bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded-lg font-semibold">
+          Apply
+        </button>
+      </div>
+    </form>
 
-        <form action="/turn_on" method="POST" class="mb-3">
-            <button type="submit" class="btn btn-success btn-block">Turn On Display</button>
-        </form>
-
-        <!-- Brightness Control Form -->
-        <form action="/set_brightness" method="POST" class="mb-4">
-            <div class="form-group">
-                <label for="brightness">Select Brightness:</label>
-                <select name="brightness" id="brightness" class="form-control">
-                    <option value="64">Low (64)</option>
-                    <option value="128">Medium (128)</option>
-                    <option value="192">High (192)</option>
-                    <option value="255">Max (255)</option>
-                </select>
-            </div>
-            <button type="submit" class="btn btn-primary btn-block">Set Brightness</button>
-        </form>
-
-        <!-- Scrolling Text Form -->
-        <!-- <h2>Scrolling Text</h2>
-        <form action="/scroll_text" method="POST" class="mb-3">
-            <div class="form-group">
-                <label for="text">Enter Text to Scroll:</label>
-                <input type="text" name="text" class="form-control" placeholder="Enter text to scroll" required>
-            </div>
-            <button type="submit" class="btn btn-success btn-block">Start Scrolling</button>
-        </form> -->
-
-        <!-- Adjustable scroll speed -->
-        <h2>Scrolling Text</h2>
-        <form method="POST" action="/scroll_text" class="mb-3">
-            <div class="form-group">
-            <label for="text">Text to scroll:</label>
-            <input type="text" name="text" class="form-control" required>
-            </div>
-            <div class="form-group">
-            <label for="speed">Scroll speed (in seconds):</label>
-            <input type="number" name="speed" class="form-control" step="0.01" value="0.1" required>
-            </div>
-            <button type="submit" class="btn btn-success btn-block">Start Scrolling</button>
-        </form>
-        
-        <!-- Stop Scrolling Button -->
-        <form action="/stop_scroll" method="POST" class="mb-3">
-            <button type="submit" class="btn btn-warning btn-block">Stop Scrolling</button>
-        </form>
-
+    <!-- Custom Scroll (Dynamic JS-Driven) -->
+    <div id="scrollForm" class="bg-gray-800 p-4 rounded-xl shadow col-span-1 md:col-span-2">
+      <h2 class="text-xl font-semibold mb-2">Scroll Message</h2>
+      <input
+        id="scrollTextInput"
+        type="text"
+        placeholder="Enter message to scroll"
+        required
+        class="w-full mb-3 px-3 py-2 rounded bg-gray-700"
+      />
+      <label class="block mb-1">Speed</label>
+      <select id="speedSelect" class="w-full mb-3 px-3 py-2 bg-gray-700 rounded">
+        <option value="0.08">Fast</option>
+        <option value="0.15" selected>Normal</option>
+        <option value="0.25">Slow</option>
+      </select>
+      <button
+        id="scrollToggleBtn"
+        class="w-full bg-purple-500 hover:bg-purple-600 py-2 rounded-lg font-semibold"
+      >
+        Scroll Message
+      </button>
     </div>
 
-    <!-- Bootstrap JS and dependencies -->
-    <script src="https://code.jquery.com/jquery-3.5.1.slim.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@popperjs/core@2.5.4/dist/umd/popper.min.js"></script>
-    <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/js/bootstrap.min.js"></script>
+    <!-- Preset Messages -->
+    <form action="/scroll_text" method="post" class="bg-gray-800 p-4 rounded-xl shadow col-span-1 md:col-span-2">
+      <h2 class="text-xl font-semibold mb-2">Presets</h2>
+      <input type="hidden" name="speed" value="0.15">
+      <div class="grid grid-cols-2 gap-2">
+        <button name="text" value="Lunch Break" class="bg-orange-500 hover:bg-orange-600 py-2 rounded">
+          🍴 Lunch Break
+        </button>
+        <button name="text" value="Meeting in Progress" class="bg-blue-500 hover:bg-blue-600 py-2 rounded">
+          📅 Meeting
+        </button>
+        <button name="text" value="Welcome!" class="bg-teal-500 hover:bg-teal-600 py-2 rounded">
+          👋 Welcome
+        </button>
+        <button name="text" value="Have a Nice Day!" class="bg-indigo-500 hover:bg-indigo-600 py-2 rounded">
+          ☀️ Nice Day
+        </button>
+      </div>
+    </form>
+  </div>
+
+  <!-- Animations -->
+  <div class="w-full max-w-2xl bg-gray-800 mt-6 p-4 rounded-xl shadow">
+    <h2 class="text-xl font-semibold mb-2">Animations</h2>
+    <form action="/set_animation" method="post" class="grid grid-cols-2 md:grid-cols-3 gap-2 mb-3">
+      <input type="hidden" name="speed" value="0.08">
+      <button name="name" value="sparkle" class="bg-pink-600 hover:bg-pink-700 py-2 rounded">Sparkle</button>
+      <button name="name" value="wave" class="bg-cyan-600 hover:bg-cyan-700 py-2 rounded">Wave</button>
+      <button name="name" value="swirl" class="bg-violet-600 hover:bg-violet-700 py-2 rounded">Swirl</button>
+      <button name="name" value="plasma" class="bg-orange-600 hover:bg-orange-700 py-2 rounded">Plasma</button>
+      <button name="name" value="box" class="bg-amber-600 hover:bg-amber-700 py-2 rounded">Box</button>
+      <button name="name" value="pingpong" class="bg-lime-600 hover:bg-lime-700 py-2 rounded">Ping-Pong</button>
+      <button name="name" value="rain" class="bg-sky-600 hover:bg-sky-700 py-2 rounded">Rain</button>
+      <button name="name" value="aurora" class="bg-blue-600 hover:bg-blue-700 py-2 rounded">Aurora</button>
+      <button name="name" value="life" class="bg-emerald-600 hover:bg-emerald-700 py-2 rounded">Life</button>
+      <button name="name" value="matrix" class="bg-teal-600 hover:bg-teal-700 py-2 rounded">Matrix</button>
+      <button name="name" value="rings" class="bg-fuchsia-600 hover:bg-fuchsia-700 py-2 rounded">Rings</button>
+      <button name="name" value="tunnel" class="bg-indigo-600 hover:bg-indigo-700 py-2 rounded">Tunnel</button>
+      <button name="name" value="checker" class="bg-slate-600 hover:bg-slate-700 py-2 rounded">Checker</button>
+      <button name="name" value="diamond" class="bg-stone-600 hover:bg-stone-700 py-2 rounded">Diamond</button>
+      <button name="name" value="lissajous" class="bg-zinc-600 hover:bg-zinc-700 py-2 rounded">Lissajous</button>
+    </form>
+    <form action="/stop_animation" method="post">
+      <button class="w-full bg-gray-600 hover:bg-gray-700 py-2 rounded">Stop Animations</button>
+    </form>
+  </div>
+
+  <!-- Countdown Timer -->
+  <div class="w-full max-w-2xl bg-gray-800 mt-6 p-4 rounded-xl shadow">
+    <h2 class="text-xl font-semibold mb-2">Countdown</h2>
+    <form action="/start_countdown" method="post" class="grid grid-cols-2 gap-3 mb-3">
+      <div>
+        <label class="block mb-1 text-sm">Minutes</label>
+        <input name="minutes" type="number" min="0" value="5" class="w-full px-3 py-2 rounded bg-gray-700" />
+      </div>
+      <div>
+        <label class="block mb-1 text-sm">Seconds</label>
+        <input name="seconds" type="number" min="0" max="59" value="0" class="w-full px-3 py-2 rounded bg-gray-700" />
+      </div>
+      <div class="col-span-2">
+        <button class="w-full bg-rose-600 hover:bg-rose-700 py-2 rounded">Start Countdown</button>
+      </div>
+    </form>
+    <form action="/stop_countdown" method="post">
+      <button class="w-full bg-gray-600 hover:bg-gray-700 py-2 rounded">Stop Countdown</button>
+    </form>
+  </div>
+
+  <!-- Status Panel -->
+  <div class="w-full max-w-2xl bg-gray-800 mt-10 p-4 rounded-xl shadow text-base">
+    <h2 class="text-xl font-semibold mb-3">📊 System Status</h2>
+    <div id="status">
+      <p>Loading status...</p>
+    </div>
+  </div>
+
+  <!-- Dynamic JS -->
+  <script>
+    let isScrolling = false;
+    let isFetchingStatus = false;
+
+    const toggleBtn = document.getElementById("scrollToggleBtn");
+    const speedSelect = document.getElementById("speedSelect");
+    const textInput = document.getElementById("scrollTextInput");
+
+    /**
+     * fetchStatus()
+     * Polls /status to see if we're currently scrolling,
+     * plus queue length and last message.
+     */
+    async function fetchStatus() {
+      if (isFetchingStatus) return;
+      isFetchingStatus = true;
+
+      try {
+        const res = await fetch("/status");
+        if (!res.ok) {
+          throw new Error("Failed to fetch status");
+        }
+        const data = await res.json();
+
+        // Convert to boolean
+        isScrolling = !!data.scrolling;
+
+        document.getElementById("status").innerHTML = `
+          <p><strong>Scrolling:</strong> ${data.scrolling}</p>
+          <p><strong>Queue Length:</strong> ${data.queue_length}</p>
+          <p><strong>Last Message:</strong> ${data.last_message || "N/A"}</p>
+          <p><strong>Animation:</strong> ${data.animation || "None"}</p>
+          <p><strong>Countdown:</strong> ${data.countdown_remaining != null ? data.countdown_remaining + 's' : 'None'}</p>
+        `;
+
+        // Update button label
+        toggleBtn.textContent = isScrolling ? "🛑 Stop Scrolling" : "Scroll Message";
+      } catch (err) {
+        document.getElementById("status").innerHTML = "<p>Error fetching status.</p>";
+      } finally {
+        isFetchingStatus = false;
+      }
+    }
+
+    /**
+     * Force new text by:
+     * 1) stopping any old scroll, 
+     * 2) posting new text.
+     */
+    async function forceNewScroll(newText, newSpeed) {
+      // stop any old text first
+      await fetch("/stop_scroll", { method: "POST" });
+      // then post new text
+      await fetch("/scroll_text", {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: `text=${encodeURIComponent(newText)}&speed=${encodeURIComponent(newSpeed)}`
+      });
+      // Refresh status
+      setTimeout(fetchStatus, 500);
+    }
+
+    /**
+     * On Enter => force a new scroll
+     */
+    textInput.addEventListener("keypress", async (e) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        const text = textInput.value.trim();
+        if (!text) {
+          alert("Please enter a message to scroll.");
+          return;
+        }
+        const speed = speedSelect.value;
+        await forceNewScroll(text, speed);
+      }
+    });
+
+    /**
+     * On toggle button => either /stop_scroll or /scroll_text
+     * If we want to forcibly stop old text before new, we can do:
+     *  - if scrolling => /stop_scroll
+     *  - else => new scroll with text from input
+     */
+    toggleBtn.addEventListener("click", async (e) => {
+      e.preventDefault();
+
+      if (isScrolling) {
+        // Already scrolling => Stop
+        await fetch("/stop_scroll", { method: "POST" });
+      } else {
+        // Start scrolling => /scroll_text
+        const text = textInput.value.trim();
+        if (!text) {
+          alert("Please enter a message to scroll.");
+          return;
+        }
+        const speed = speedSelect.value;
+        await fetch("/scroll_text", {
+          method: "POST",
+          headers: { "Content-Type": "application/x-www-form-urlencoded" },
+          body: `text=${encodeURIComponent(text)}&speed=${encodeURIComponent(speed)}`,
+        });
+      }
+
+      // Wait half a second, then poll status
+      setTimeout(fetchStatus, 500);
+    });
+
+    /**
+     * Auto-update speed if changed mid-scroll
+     */
+    speedSelect.addEventListener("change", async () => {
+      if (isScrolling) {
+        const text = textInput.value.trim();
+        if (!text) {
+          alert("Please enter a message before changing the speed.");
+          return;
+        }
+        const speed = speedSelect.value;
+        await fetch("/scroll_text", {
+          method: "POST",
+          headers: { "Content-Type": "application/x-www-form-urlencoded" },
+          body: `text=${encodeURIComponent(text)}&speed=${encodeURIComponent(speed)}`,
+        });
+        fetchStatus();
+      }
+    });
+
+    // Initial load + periodic refresh
+    fetchStatus();
+    setInterval(fetchStatus, 3000);
+  </script>
 </body>
 </html>

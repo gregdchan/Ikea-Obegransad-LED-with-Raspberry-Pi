@@ -1,161 +1,348 @@
+##########################################################
+# flask_server.py (FIXED for continuous scrolling)
+##########################################################
 from flask import Flask, render_template, request, jsonify, redirect, url_for
-from config import GPIO, brightness_levels, set_brightness, render_word, p_scan, p_clear, COLS
 from threading import Thread, Lock, Event
-import time
-import sys
-import main
+import time, sys
+
+import config
+from config import (
+    GPIO, brightness_levels, set_brightness,
+    scrolling_event, shutdown_event,
+    randomize_pixels
+)
+from scripts.scrolling_text import scroll_text as actual_scroll_text
+from scripts.animations import run_animation_loop
+from scripts.clock import display_time
+from config import p_scan
+from scripts.countdown import run_countdown_loop
+import main   # For display_time_and_weather
 
 app = Flask(__name__)
 
-brightness_lock = Lock()  # Lock to prevent race conditions on brightness changes
-brightness_index = 0  # Track the current brightness level index globally
-stop_event = Event()  # Event to signal stopping threads
-scrolling_event = main.scrolling_event  # Use the scrolling_event from main
+brightness_lock = Lock()
+stop_event = Event()  # Local event if you want to stop the scroll_worker manually
+DEFAULT_BRIGHTNESS_INDEX = 1
 
-# Global variables to store the text and scroll speed
-scrolling_text = ""
-scroll_speed = 0.15  # Default scroll speed
+##########################################################
+# Routes
+##########################################################
+@app.route("/")
+def index():
+    """
+    Renders index.html, passing 'current_brightness'
+    so the dropdown reflects the server's brightness state.
+    """
+    return render_template(
+        "index.html",
+        current_brightness=brightness_levels[config.brightness_index],
+        settings={
+            "scroll_direction": config.scroll_direction,
+            "transitions_enabled": config.transitions_enabled,
+            "weather_city": getattr(config, 'weather_city', ''),
+            "weather_api_key": getattr(config, 'weather_api_key', ''),
+        }
+    )
 
-# Flask route to turn off the display (set brightness to 0)
-@app.route('/turn_off', methods=['POST'])
-def turn_off():
-    global brightness_index
-    with brightness_lock:
-        brightness_index = 0  # Set the brightness index to 0 for turning off
-        set_brightness(brightness_levels[brightness_index])  # Set the brightness to 0 (off)
-    return redirect('/')
-
-# Flask route to turn on the display (set brightness to default)
-@app.route('/turn_on', methods=['POST'])
+@app.route("/turn_on", methods=["POST"])
 def turn_on():
-    global brightness_index
     with brightness_lock:
-        brightness_index = 2  # Set the brightness index to the default level (assuming 1 is default)
-        set_brightness(brightness_levels[brightness_index])  # Set the brightness to default
-    return redirect('/')
+        config.brightness_index = DEFAULT_BRIGHTNESS_INDEX
+        set_brightness(brightness_levels[config.brightness_index])
+    return redirect("/")
 
-# Flask route to set a specific brightness level
-@app.route('/set_brightness', methods=['POST'])
+@app.route("/turn_off", methods=["POST"])
+def turn_off():
+    with brightness_lock:
+        config.brightness_index = 0
+        set_brightness(brightness_levels[config.brightness_index])
+    return redirect("/")
+
+@app.route("/set_brightness", methods=["POST"])
 def set_brightness_from_web():
-    global brightness_index
-    brightness = int(request.form.get('brightness'))  # Get the brightness level from form data
-    if brightness in brightness_levels:  # Ensure the brightness value is valid
+    try:
+        val = int(request.form.get("brightness", "").strip())
+    except (ValueError, AttributeError):
+        return jsonify({"error": "Invalid brightness"}), 400
+
+    if val in brightness_levels:
         with brightness_lock:
-            brightness_index = brightness_levels.index(brightness)  # Update the brightness index
-            set_brightness(brightness)  # Set the actual brightness
-        return redirect('/')
+            config.brightness_index = brightness_levels.index(val)
+            set_brightness(val)
+        return redirect("/")
     else:
         return jsonify({"error": "Invalid brightness level"}), 400
 
-# Flask route for the main index page (for brightness control)
-@app.route('/')
-def index():
-    return render_template('index.html', current_brightness=brightness_levels[brightness_index])
-
-# Route for scrolling text with adjustable scroll speed
-@app.route('/scroll_text', methods=['POST'])
+@app.route("/scroll_text", methods=["POST"])
 def scroll_text_route():
-    global scrolling_text, scroll_speed
-    scrolling_text = request.form.get('text')  # Get text from the form input
-    speed = float(request.form.get('speed'))  # Get scroll speed from form input
-    scroll_speed = speed  # Set the scroll speed
-    scrolling_event.set()  # Signal that scrolling should start
-    return redirect(url_for('index'))
+    """
+    Immediately override any existing scroll with new text:
+      1) Clear old text => old loop breaks
+      2) Set new text/speed in config => new loop begins
+      3) Raise scrolling_event => scroll worker runs
+    """
+    text = request.form.get("text", "").strip()
+    speed_str = request.form.get("speed", "0.15").strip()
 
-# Route to stop scrolling text
-@app.route('/stop_scroll', methods=['POST'])
+    print(f"[scroll_text_route] Received text='{text}', speed='{speed_str}'")
+
+    if not text:
+        print("[scroll_text_route] ERROR: No text provided")
+        return jsonify({"error": "No text provided"}), 400
+
+    try:
+        new_speed = float(speed_str)
+    except ValueError:
+        print("[scroll_text_route] ERROR: Invalid speed")
+        return jsonify({"error": "Invalid speed"}), 400
+
+    # If an animation is running, transition then stop it
+    try:
+        if getattr(config, 'animation_event', None) and config.animation_event.is_set():
+            # First stop animation to prevent it from repainting during transition
+            config.animation_event.clear()
+            config.current_animation = None
+            if getattr(config, 'transitions_enabled', True):
+                randomize_pixels(frames=6, frame_delay=0.04, fill_ratio=0.5)
+    except Exception:
+        pass
+
+    # Force stop old scroll by clearing old text & event
+    config.current_scrolling_text = ""
+    scrolling_event.clear()
+    time.sleep(0.05)  # tiny delay to ensure old loop sees the mismatch
+
+    # Now set new text & speed
+    config.current_scrolling_text = text
+    config.current_scrolling_speed = new_speed
+
+    # Raise event => new scroll
+    scrolling_event.set()
+    print(f"[scroll_text_route] Updated text='{text}', speed={new_speed}. Triggering scroll.")
+
+    return redirect(url_for("index"))
+
+@app.route("/stop_scroll", methods=["POST"])
 def stop_scroll():
-    global scrolling_text
-    scrolling_text = ""  # Clear the scrolling text to stop scrolling
-    scrolling_event.clear()  # Signal that scrolling should stop
-    return redirect(url_for('index'))
-
-# Function to scroll the text on the LED matrix
-def scroll_text(text):
-    global scroll_speed
-    display_width = 16  # The width of your display matrix in pixels
-    text_width = len(text) * 8  # Calculate total width of the text (8 pixels per character)
-
-    # If the text is less than 3 characters, display it statically
-    if len(text) < 3:
-        with brightness_lock:
-            p_clear()  # Clear the screen
-            render_word(text, 0, 4)  # Display the text statically at the leftmost edge (no scrolling)
-            p_scan()  # Push buffer to the display
-        return
-
-    # Start scrolling from outside the right edge of the display
-    start_offset = display_width  # This positions the text just outside the right edge of the display
-    end_offset = -(text_width)  # Continue scrolling until the text is fully off the left edge
-
-    print(f"[scroll_text] Starting text scroll: {text}")
-
-    for offset in range(start_offset, end_offset, -1):  # Move the text from right to left
-        with brightness_lock:
-            if not scrolling_text or stop_event.is_set():
-                break  # Exit if scrolling_text has been cleared or stop event is set
-        p_clear()  # Clear the screen before each render
-        render_word(text, offset, 4)  # Render the text at the current offset
-        p_scan()  # Push buffer to the display
-        time.sleep(scroll_speed)  # Control the speed of scrolling
-
-# Background thread to handle the scrolling
-def scroll_thread():
-    global scrolling_text
+    """
+    Stop scrolling => revert to clock by clearing text & event
+    """
+    print("[stop_scroll] Called. Transitioning out, then clearing text & event.")
+    config.current_scrolling_text = ""
+    scrolling_event.clear()
+    # Brief randomization effect after stopping scroll to avoid race with scroll loop
     try:
-        while not stop_event.is_set():  # Check the stop event to gracefully shutdown
-            if scrolling_event.is_set() and scrolling_text:
-                scroll_text(scrolling_text)
+        if getattr(config, 'transitions_enabled', True):
+            randomize_pixels(frames=6, frame_delay=0.04, fill_ratio=0.5)
+    except Exception as _:
+        pass
+    # Render a time frame to immediately resume visuals
+    try:
+        display_time(); p_scan()
+    except Exception:
+        pass
+    return redirect(url_for("index"))
+
+@app.route("/set_animation", methods=["POST"])
+def set_animation():
+    name = request.form.get("name", "").strip()
+    speed_str = request.form.get("speed", "0.08").strip()
+    try:
+        config.current_animation_speed = max(0.01, float(speed_str))
+    except Exception:
+        pass
+    # Stop scrolling text, set animation
+    config.current_scrolling_text = ""
+    scrolling_event.clear()
+    if name:
+        config.current_animation = name
+        config.animation_event.set()
+    return redirect(url_for("index"))
+
+@app.route("/stop_animation", methods=["POST"])
+def stop_animation():
+    config.animation_event.clear()
+    config.current_animation = None
+    # Brief playful transition after animation is fully stopped
+    try:
+        if getattr(config, 'transitions_enabled', True):
+            randomize_pixels(frames=6, frame_delay=0.04, fill_ratio=0.5)
+    except Exception as _:
+        pass
+    try:
+        display_time(); p_scan()
+    except Exception:
+        pass
+    return redirect(url_for("index"))
+
+@app.route("/start_countdown", methods=["POST"])
+def start_countdown():
+    try:
+        minutes = int(request.form.get("minutes", "0").strip() or 0)
+        seconds = int(request.form.get("seconds", "0").strip() or 0)
+        total = max(0, minutes * 60 + seconds)
+    except Exception:
+        return jsonify({"error": "Invalid minutes/seconds"}), 400
+
+    # Stop other modes (ensure animations stop first, then transition)
+    try:
+        if getattr(config, 'animation_event', None) and config.animation_event.is_set():
+            config.animation_event.clear()
+            config.current_animation = None
+            if getattr(config, 'transitions_enabled', True):
+                randomize_pixels(frames=6, frame_delay=0.04, fill_ratio=0.5)
+    except Exception:
+        pass
+
+    config.current_scrolling_text = ""
+    scrolling_event.clear()
+
+    # Start countdown
+    config.countdown_target_epoch = time.time() + total
+    config.countdown_event.set()
+    return redirect(url_for("index"))
+
+@app.route("/stop_countdown", methods=["POST"])
+def stop_countdown():
+    # Stop then transition
+    config.countdown_event.clear()
+    config.countdown_target_epoch = 0.0
+    try:
+        if getattr(config, 'transitions_enabled', True):
+            randomize_pixels(frames=6, frame_delay=0.04, fill_ratio=0.5)
+    except Exception:
+        pass
+    try:
+        display_time(); p_scan()
+    except Exception:
+        pass
+    return redirect(url_for("index"))
+
+@app.route("/status", methods=["GET"])
+def status():
+    """
+    For the front-end to see if we're scrolling:
+    It's scrolling if event is set AND there's text.
+    """
+    scrolling = scrolling_event.is_set() and bool(config.current_scrolling_text)
+    # Compute countdown remaining if active
+    remaining = None
+    if config.countdown_event.is_set():
+        try:
+            remaining = max(0, int(round(config.countdown_target_epoch - time.time())))
+        except Exception:
+            remaining = None
+    return jsonify({
+        "scrolling": scrolling,
+        "queue_length": 0,
+        "last_message": config.current_scrolling_text or None,
+        "animation": config.current_animation,
+        "countdown_remaining": remaining
+    })
+
+@app.route("/update_settings", methods=["POST"])
+def update_settings():
+    try:
+        sd = request.form.get("scroll_direction")
+        tr = request.form.get("transitions_enabled")
+        city = request.form.get("weather_city", "").strip()
+        apikey = request.form.get("weather_api_key", "").strip()
+
+        settings_payload = {}
+        if sd in ("-1", "1"):
+            settings_payload['scroll_direction'] = int(sd)
+        if tr is not None:
+            settings_payload['transitions_enabled'] = (tr == 'on' or tr == 'true' or tr == '1')
+        if city:
+            settings_payload['weather_city'] = city
+        if apikey:
+            settings_payload['weather_api_key'] = apikey
+
+        if settings_payload:
+            config.update_settings(**settings_payload)
+        return redirect(url_for("index"))
+    except Exception as e:
+        return jsonify({"error": str(e)}), 400
+
+##########################################################
+# Scrolling Thread
+##########################################################
+def scroll_worker():
+    """
+    Continuously checks if scrolling_event is set + config.current_scrolling_text
+    We'll use repeat=True in actual_scroll_text so it never ends on its own
+    unless a new text arrives or /stop_scroll is called.
+    """
+    print("[scroll_worker] Thread started. Ready to scroll text on demand.")
+
+    while not stop_event.is_set() and not shutdown_event.is_set():
+        # If event is set and text is not empty
+        if scrolling_event.is_set() and config.current_scrolling_text:
+            text_to_scroll = config.current_scrolling_text
+            print(f"[scroll_worker] Starting scroll for '{text_to_scroll}' at speed={config.current_scrolling_speed}")
+
+            # Force indefinite repeat => never ends unless interrupted or /stop_scroll
+            actual_scroll_text(
+                text_to_scroll,
+                delay=config.current_scrolling_speed,
+                repeat=True,        # <--- Continuous scroll
+                large_numbers=False
+            )
+
+            # If actual_scroll_text returns normally, we see if it was truly done or interrupted
+            if config.current_scrolling_text == text_to_scroll:
+                # Without repeat, you'd do text="" but let's keep indefinite
+                # So we do NOTHING here => text remains, event remains
+                print(f"[scroll_worker] Indefinite scroll ended? Possibly old code. But leaving text in place.")
             else:
-                time.sleep(0.1)  # Check every 100ms if scrolling should start
-    except Exception as e:
-        print(f"[scroll_thread] Exception: {e}")
+                print(f"[scroll_worker] Scroll was interrupted with new text '{config.current_scrolling_text}'")
 
-# Function to start the Flask server
+        else:
+            time.sleep(0.1)
+
+    print("[scroll_worker] Exiting. stop_event or shutdown_event was set.")
+
 def run_flask_server():
-    app.run(host='0.0.0.0', port=5000)
+    print("[flask_server] Starting on port 5000...")
+    app.run(host="0.0.0.0", port=5000)
+    print("[flask_server] Flask server stopped.")
 
-# Gracefully shut down the program
 def shutdown():
-    print("[shutdown] Shutting down...")
-    stop_event.set()  # Signal threads to stop
-    scrolling_event.clear()  # Ensure scrolling stops
-    
+    print("[shutdown] Stopping threads & cleaning up.")
+    stop_event.set()
+    scrolling_event.clear()
     try:
-        GPIO.cleanup()  # Clean up GPIO resources
+        GPIO.cleanup()
     except Exception as e:
-        print(f"[shutdown] Exception during GPIO cleanup: {e}")
+        print("[shutdown] GPIO cleanup error:", e)
+    sys.exit(0)
 
-    # Wait for threads to finish
-    try:
-        if display_thread.is_alive():
-            display_thread.join()
-        if scrolling_display_thread.is_alive():
-            scrolling_display_thread.join()
-    except Exception as e:
-        print(f"[shutdown] Exception while waiting for threads to terminate: {e}")
-    
-    print("[shutdown] Threads have terminated.")
-    sys.exit(0)  # Exit the program
-
+##########################################################
+# Main Entry
+##########################################################
 if __name__ == "__main__":
     try:
-        # Start the LED matrix display in a background thread
+        # Start the main time/weather loop in the background
         display_thread = Thread(target=main.display_time_and_weather, daemon=True)
         display_thread.start()
 
-        # Start the background thread for scrolling
-        scrolling_display_thread = Thread(target=scroll_thread, daemon=True)
-        scrolling_display_thread.start()
+        # Start scrolling worker
+        worker = Thread(target=scroll_worker, daemon=True)
+        worker.start()
 
-        # Run the Flask server in a separate thread
-        flask_thread = Thread(target=run_flask_server, daemon=True)
-        flask_thread.start()
+        # Start animations loop
+        anim_worker = Thread(target=run_animation_loop, daemon=True)
+        anim_worker.start()
 
-        # Keep the main thread alive to handle shutdown
-        while flask_thread.is_alive():
-            time.sleep(0.1)
+        # Start countdown loop
+        countdown_worker = Thread(target=run_countdown_loop, daemon=True)
+        countdown_worker.start()
+
+        # Start Flask (blocking)
+        run_flask_server()
+
     except KeyboardInterrupt:
+        print("[main] KeyboardInterrupt => shutdown()")
         shutdown()
     except Exception as e:
         print(f"[main] Exception: {e}")

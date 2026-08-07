@@ -1,19 +1,118 @@
 # scrolling_text.py
+
 import time
-from config import p_clear, p_scan, render_word, COLS
+import config
+from config import (
+    p_clear,
+    p_scan,
+    render_word,
+    COLS,
+    scrolling_event,
+    shutdown_event
+)
 
-def scroll_text(word, delay=0.1):
-    # Get total width of rendered word to know how far to scroll
-    total_width = sum(8 if (ch.isupper() or ch.isdigit()) else 6 for ch in word)
-    x_start = COLS  # Start scrolling from the right side of the display
+def scroll_text(
+    text: str,
+    delay: float = 0.12,
+    repeat: bool = True,        # Default to True for continuous scrolling
+    bounce: bool = False,
+    large_numbers: bool = False,
+    y_offset: int = 4
+):
+    """
+    Continuously scrolls the given 'text' across the 16x16 matrix from right to left,
+    unless changed or stopped:
+      - If 'repeat=True', once text goes off-screen, x_pos resets for another pass.
+      - If 'bounce=True', text reverses direction when hitting edges.
+      - If 'current_scrolling_text' changes mid-loop, we break out immediately (Approach A).
+      - If 'scrolling_event' is cleared, we pause to let the time/weather loop run.
 
-    while x_start > -total_width:
-        p_clear()  # Clear the display buffer before each new position
-        render_word(word, x_start, 0, large_numbers=False)  # Use render_word with dynamic number sizing
-        p_scan()  # Refresh display to show new position
-        x_start -= 1  # Shift position left by one
-        time.sleep(delay)  # Delay between each shift for scrolling effect
+    :param text: The text to scroll.
+    :param delay: Delay (seconds) between shifts in x_pos (controls speed).
+    :param repeat: If True, once the text moves off left edge, x_pos resets for another pass.
+    :param bounce: If True, reverse direction at left/right edges for a back-and-forth effect.
+    :param large_numbers: If True, digits render in large font.
+    :param y_offset: Vertical position for rendering (default 4 is near center).
+    """
 
-    # Final clear after scrolling completes
-    p_clear()
-    p_scan()
+    print(f"[scroll_text] >>> START: text='{text}', delay={delay}, bounce={bounce}, repeat={repeat}")
+
+    # If text is empty, bail out
+    if not text:
+        print("[scroll_text] No text provided. Exiting immediately.")
+        return
+
+    # If very short (≤2 chars), render statically centered instead of scrolling
+    trimmed = text.strip()
+    if len(trimmed) <= 2:
+        # Center horizontally: small font is 5 px/char
+        glyph_width = 5 * len(trimmed)
+        x_center = max(0, (COLS - glyph_width) // 2)
+        # Transition into the short text for a playful effect
+        config.transition_to_text_with_randomize(trimmed, x_start=x_center, y_start=y_offset, force_small=True)
+        p_scan()
+        # Keep displaying until text changes or scrolling is stopped
+        while not shutdown_event.is_set() and scrolling_event.is_set() and config.current_scrolling_text == text:
+            time.sleep(0.1)
+        return
+
+    # Force compact 4x5 font for scrolling for legibility and headroom on 16x16
+    # Each small glyph advances by 5px (4px glyph + 1px spacing)
+    text_width = 5 * len(text)
+
+    # Before scrolling, optionally show a quick transition preview if enabled
+    if getattr(config, 'transitions_enabled', True):
+        preview_width = 5 * len(text)
+        preview_x = max(0, (COLS - preview_width) // 2)
+        config.transition_to_text_with_randomize(text, x_start=preview_x, y_start=y_offset, force_small=True)
+
+    # Start from the right edge, scrolling left by default
+    direction = getattr(config, 'scroll_direction', -1)
+    x_pos = COLS
+
+    while not shutdown_event.is_set():
+        # If scrolling_event is cleared => time/weather active => wait
+        if not scrolling_event.is_set():
+            time.sleep(0.1)
+            continue
+
+        # If user changed global text => mismatch => break old loop
+        if config.current_scrolling_text != text:
+            print("[scroll_text] New text arrived, interrupting old scroll.")
+            break
+
+        # Render the text at current x
+        # render_word handles p_clear() internally
+        render_word(
+            text,
+            x_start=x_pos,
+            y_start=y_offset,
+            large_numbers=False,
+            force_small=True
+        )
+        p_scan()
+
+        # Move x and sleep
+        x_pos += direction
+        time.sleep(delay)
+
+        # Handle bounce or normal
+        if bounce:
+            if x_pos <= -text_width or x_pos >= COLS:
+                direction *= -1
+        else:
+            # Without bounce, check if text fully left
+            if not repeat and x_pos < -text_width:
+                # Done => break
+                break
+            elif repeat and x_pos < -text_width:
+                # Reset x_pos to the right edge for another pass
+                x_pos = COLS
+
+    print(f"[scroll_text] <<< END: text='{text}'")
+
+    # FINAL NOTE: We do NOT p_clear() here, so the last frame remains displayed
+    # If you want the LED matrix cleared at the end, uncomment below:
+    #
+    # p_clear()
+    # p_scan()
