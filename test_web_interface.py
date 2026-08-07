@@ -208,10 +208,10 @@ class WebInterfaceTest(unittest.TestCase):
         self.assertEqual(frames[0], frames[2])
         self.assertNotEqual(frames[0], frames[1])
 
-    def test_default_display_cycle_includes_animated_weather(self):
+    def test_default_display_cycle_omits_animated_weather(self):
         self.assertEqual(
             main.DEFAULT_DISPLAY_STAGES,
-            (("clock", 12.0), ("temperature", 5.0), ("weather", 7.0)),
+            (("clock", 15.0), ("temperature", 15.0)),
         )
         config.current_default_view = "weather"
         config.current_weather_condition = "Clear Sky"

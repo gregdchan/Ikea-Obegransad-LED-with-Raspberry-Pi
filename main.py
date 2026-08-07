@@ -15,9 +15,11 @@ from scripts.weather_animations import render_weather_frame
 
 
 DEFAULT_DISPLAY_STAGES = (
-    ("clock", 12.0),
-    ("temperature", 5.0),
-    ("weather", 7.0),
+    ("clock", 15.0),
+    ("temperature", 15.0),
+    # Weather animations are intentionally disabled; they do not read clearly
+    # enough on the 16x16 monochrome panel.
+    # ("weather", 7.0),
 )
 
 def intro_greeting():
@@ -34,7 +36,7 @@ def display_time_and_weather():
     2. Loop until shutdown_event is set:
        - If scrolling_event is set, we pause time/weather to avoid concurrency.
        - Refresh weather data through the shared 20-minute cache.
-       - Cycle through clock, temperature, and animated conditions.
+       - Alternate between the clock and current temperature.
        - Rely on final 'shutdown()' for GPIO cleanup, not here.
     """
     stage_index = 0

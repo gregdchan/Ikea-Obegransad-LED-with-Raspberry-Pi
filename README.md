@@ -27,9 +27,9 @@ Python, so there's no toolchain to flash and everything is editable in place.
 
 ## Features
 - **Clock** — large HH/MM digits, the default mode.
-- **Weather** — cycles after the clock and temperature with animated conditions
-  for clear day/night, clouds, rain, thunder, snow, and fog
-  from OpenWeatherMap for a configurable city.
+- **Weather** — current temperature alternates with the clock every 15 seconds,
+  using OpenWeatherMap for a configurable city. Experimental condition
+  animations remain in the codebase but are disabled by default.
 - **Messages** — scrolling text in the same large font as the clock, with
   adjustable speed and direction, or static display for 1–2 character messages.
 - **Animations** — 15 built-ins: sparkle, wave, swirl, plasma, box, pingpong,
