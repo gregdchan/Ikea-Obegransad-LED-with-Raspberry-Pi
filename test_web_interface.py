@@ -116,6 +116,29 @@ class WebInterfaceTest(unittest.TestCase):
         transition.assert_not_called()
         render_word.assert_called_once()
 
+    def test_direction_change_applies_to_an_active_message(self):
+        positions = []
+        config.scroll_direction = -1
+        config.current_scrolling_text = "ABC"
+        config.scrolling_event.set()
+
+        def capture_position(_, x_start, **__):
+            positions.append(x_start)
+            if len(positions) == 4:
+                config.scroll_direction = 1
+            elif len(positions) == 8:
+                config.current_scrolling_text = ""
+
+        with (
+            patch.object(scrolling_text, "render_word", side_effect=capture_position),
+            patch.object(scrolling_text, "p_scan"),
+            patch.object(scrolling_text.time, "sleep"),
+        ):
+            scrolling_text.scroll_text("ABC", delay=0, repeat=True)
+
+        self.assertEqual(positions[:4], [16, 15, 14, 13])
+        self.assertEqual(positions[4], 14)
+
     def test_pomodoro_phase_progression(self):
         config.timer_mode = "pomodoro"
         config.pomodoro_phase = "work"
