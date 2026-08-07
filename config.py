@@ -167,7 +167,7 @@ def _render_text_to_buffer_snapshot(word, x_start, y_start, force_small):
     """
     original = _capture_current_buffer()
     p_clear()
-    render_word(word, x_start=x_start, y_start=y_start, large_numbers=False, force_small=force_small)
+    render_word(word, x_start=x_start, y_start=y_start, large_numbers=not force_small, force_small=force_small)
     target = _capture_current_buffer()
     # restore original
     with display_lock:
@@ -295,7 +295,9 @@ def render_word(word, x_start=0, y_start=0, large_numbers=True, force_small=Fals
                     next_is_large = i < (length - 1) and (word[i + 1].isupper() or word[i + 1].isdigit())
                     size = "large" if (prev_is_large or next_is_large) else "small"
             else:
-                size = "large" if ch.isupper() else "small"
+                # Lowercase gets the small font; uppercase AND punctuation get large,
+                # so symbols match the weight of the letters around them.
+                size = "small" if ch.islower() else "large"
 
         render_char(x_offset, y_start, ch, size)
         # Large chars are 8 pixels wide (6 pixels + 1 spacing), small chars are 6 pixels wide (4 pixels + 1 spacing)

@@ -42,29 +42,33 @@ def scroll_text(
         print("[scroll_text] No text provided. Exiting immediately.")
         return
 
+    # Scroll in the large 6x7 font (same look as the clock/temperature digits).
+    # It has no lowercase, so uppercase for display; keep `text` as-is because
+    # the interrupt check compares it against config.current_scrolling_text.
+    display_text = text.upper()
+
     # If very short (≤2 chars), render statically centered instead of scrolling
-    trimmed = text.strip()
+    trimmed = display_text.strip()
     if len(trimmed) <= 2:
-        # Center horizontally: small font is 5 px/char
-        glyph_width = 5 * len(trimmed)
+        # Center horizontally: large font advances 7 px/char (6px glyph + 1 spacing)
+        glyph_width = 7 * len(trimmed) - 1
         x_center = max(0, (COLS - glyph_width) // 2)
         # Transition into the short text for a playful effect
-        config.transition_to_text_with_randomize(trimmed, x_start=x_center, y_start=y_offset, force_small=True)
+        config.transition_to_text_with_randomize(trimmed, x_start=x_center, y_start=y_offset, force_small=False)
         p_scan()
         # Keep displaying until text changes or scrolling is stopped
         while not shutdown_event.is_set() and scrolling_event.is_set() and config.current_scrolling_text == text:
             time.sleep(0.1)
         return
 
-    # Force compact 4x5 font for scrolling for legibility and headroom on 16x16
-    # Each small glyph advances by 5px (4px glyph + 1px spacing)
-    text_width = 5 * len(text)
+    # Each large glyph advances by 7px (6px glyph + 1px spacing)
+    text_width = 7 * len(display_text)
 
     # Before scrolling, optionally show a quick transition preview if enabled
     if getattr(config, 'transitions_enabled', True):
-        preview_width = 5 * len(text)
+        preview_width = 7 * len(display_text)
         preview_x = max(0, (COLS - preview_width) // 2)
-        config.transition_to_text_with_randomize(text, x_start=preview_x, y_start=y_offset, force_small=True)
+        config.transition_to_text_with_randomize(display_text, x_start=preview_x, y_start=y_offset, force_small=False)
 
     # Start from the right edge, scrolling left by default
     direction = getattr(config, 'scroll_direction', -1)
@@ -84,11 +88,11 @@ def scroll_text(
         # Render the text at current x
         # render_word handles p_clear() internally
         render_word(
-            text,
+            display_text,
             x_start=x_pos,
             y_start=y_offset,
-            large_numbers=False,
-            force_small=True
+            large_numbers=True,
+            force_small=False
         )
         p_scan()
 
