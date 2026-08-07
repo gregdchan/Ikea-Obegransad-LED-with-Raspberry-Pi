@@ -1,8 +1,24 @@
 import RPi.GPIO as GPIO
 from fonts import System6x7, SmallFont4x5, char_map, small_char_map
 from threading import Event, Lock
+import os
 import time
 import random
+
+# ponytail: 6-line .env reader instead of python-dotenv — no quoting, no interpolation,
+# no export lines. If the file ever needs those, add python-dotenv and delete this.
+def _load_env(path=os.path.join(os.path.dirname(__file__), '.env')):
+    try:
+        with open(path) as f:
+            for line in f:
+                line = line.strip()
+                if line and not line.startswith('#') and '=' in line:
+                    k, v = line.split('=', 1)
+                    os.environ.setdefault(k.strip(), v.strip())
+    except FileNotFoundError:
+        print(f"[config] No .env at {path}; copy .env.example and fill it in.")
+
+_load_env()
 
 ROWS = 16
 COLS = 16
@@ -54,9 +70,9 @@ current_scrolling_speed = 0.05   # Default scroll speed (lower = faster, higher 
 scroll_direction = -1            # -1 = left, +1 = right
 transitions_enabled = True       # Whether to show playful transitions
 
-# Weather settings (editable via UI)
-weather_api_key = 'REDACTED_SEE_DOTENV'
-weather_city = 'new york city'
+# Weather settings (from .env, editable at runtime via UI)
+weather_api_key = os.environ.get('WEATHER_API_KEY', '')
+weather_city = os.environ.get('WEATHER_CITY', 'new york city')
 
 def update_settings(**kwargs):
     """

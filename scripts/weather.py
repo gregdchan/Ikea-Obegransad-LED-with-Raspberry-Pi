@@ -1,8 +1,10 @@
 import requests
-from config import p_clear, render_char, weather_api_key, weather_city
+import config
+from config import p_clear, render_char
 import time
 
-# API key and city are now sourced from config
+# Key/city are read off `config` at call time, not imported by value — otherwise
+# the .env value and the UI's update_settings() would never reach this module.
 CACHE_DURATION = 3600  # 1 hour in seconds
 
 last_request_time = 0
@@ -17,8 +19,12 @@ def get_weather():
     if current_time - last_request_time < CACHE_DURATION and cached_temperature is not None:
         return cached_temperature
 
+    if not config.weather_api_key:
+        print("[get_weather] No WEATHER_API_KEY set (.env or web UI); skipping fetch.")
+        return None
+
     URL = "http://api.openweathermap.org/data/2.5/weather"
-    params = {'q': weather_city, 'appid': weather_api_key, 'units': 'imperial'}
+    params = {'q': config.weather_city, 'appid': config.weather_api_key, 'units': 'imperial'}
     try:
         response = requests.get(URL, params=params, timeout=5)
         response.raise_for_status()

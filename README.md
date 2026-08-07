@@ -44,9 +44,13 @@ Next, you'll need to connect the LED pins to the Raspberry pi as mapped below
 5. P_KEY = 16    - Key input pin
 6. Plus 2 ground pins
 
-Permitting these steps are followed, you should be able to proceed with cloning package in your preferred folder. Once the package is cloned, open the scripts/weather.py file and update it with your own API and city information. Then run the flask_server.py file to initialize the app.
+Permitting these steps are followed, you should be able to proceed with cloning package in your preferred folder. Once the package is cloned, copy `.env.example` to `.env` and fill in your
+[OpenWeatherMap](https://openweathermap.org/api) key and city. `.env` is gitignored, so your key
+stays off GitHub. City and key can also be changed at runtime from the web UI.
 
-> $ python3 flask_server.py
+    cp .env.example .env
+    $EDITOR .env
+    python3 flask_server.py
 
 ## Auto-deploy to the Pi
 The Pi runs the server as a systemd unit (`deploy/obegransad.service`) and polls
